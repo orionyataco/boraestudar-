@@ -1,0 +1,7 @@
+{
+  "name": "BoraEstudar!",
+  "description": "Plataforma de estudos colaborativos com timeline, chat em grupo, estatísticas.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
