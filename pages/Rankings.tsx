@@ -5,9 +5,10 @@ import { formatStudyTime } from '../utils/formatTime';
 
 interface RankingsProps {
   users: RankingUser[];
+  onNavigateToProfile?: (userId: string) => void;
 }
 
-export const Rankings: React.FC<RankingsProps> = ({ users }) => {
+export const Rankings: React.FC<RankingsProps> = ({ users, onNavigateToProfile }) => {
   const [activeTab, setActiveTab] = useState<'points' | 'hours'>('points');
 
   // Sort users based on active tab
@@ -110,7 +111,11 @@ export const Rankings: React.FC<RankingsProps> = ({ users }) => {
           {sortedUsers.map((user, index) => {
             const rank = index + 1;
             return (
-              <div key={user.user.id} className="grid grid-cols-12 gap-4 p-3 md:p-4 items-center hover:bg-slate-700/30 transition-colors">
+              <div
+                key={user.user.id}
+                className="grid grid-cols-12 gap-4 p-3 md:p-4 items-center hover:bg-slate-700/50 transition-colors cursor-pointer"
+                onClick={() => onNavigateToProfile?.(user.user.id === 'me' ? 'me' : user.user.id)}
+              >
                 <div className="col-span-1 flex justify-center items-center">
                   {getRankIcon(rank)}
                 </div>

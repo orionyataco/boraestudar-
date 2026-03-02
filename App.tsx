@@ -15,15 +15,16 @@ import { Bell, Settings as SettingsIcon, Rocket, Menu } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
 
 const App: React.FC = () => {
-  const [currentPage, setCurrentPage] = useState<Page>(Page.LOGIN);
+  const [currentPage, setCurrentPage] = useState<Page>(Page.DASHBOARD);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isLoadingSession, setIsLoadingSession] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Shared state for Rankings to allow Chat updates
   const [rankingUsers, setRankingUsers] = useState<RankingUser[]>([]);
 
   useEffect(() => {
-    // Initial check
+    // Verificar sessão existente ao carregar
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         api.getMe().then(user => {
@@ -31,20 +32,21 @@ const App: React.FC = () => {
           setCurrentPage(Page.DASHBOARD);
         }).catch(() => {
           setCurrentPage(Page.LOGIN);
+        }).finally(() => {
+          setIsLoadingSession(false);
         });
       } else {
         setCurrentPage(Page.LOGIN);
+        setIsLoadingSession(false);
       }
     });
 
-    // Listen for changes
+    // Escutar mudanças de autenticação (login/logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
         api.getMe().then(user => {
           setCurrentUser(user);
-          if (currentPage === Page.LOGIN) {
-            setCurrentPage(Page.DASHBOARD);
-          }
+          setCurrentPage(prev => prev === Page.LOGIN ? Page.DASHBOARD : prev);
         });
       } else {
         setCurrentUser(null);
@@ -106,38 +108,59 @@ const App: React.FC = () => {
     }
   };
 
+  const [viewingUserId, setViewingUserId] = useState<string | null>(null);
+
+  const handleNavigateToProfile = (userId: string) => {
+    setViewingUserId(userId);
+    setCurrentPage(Page.PROFILE);
+  };
+
   const renderPage = () => {
     switch (currentPage) {
       case Page.DASHBOARD:
-        return <Dashboard onUpdateHours={handleUpdateHours} user={currentUser} onNavigate={(page) => setCurrentPage(page as Page)} />;
+        return <Dashboard onUpdateHours={handleUpdateHours} user={currentUser} onNavigateToProfile={handleNavigateToProfile} />;
       case Page.PROFILE:
-        return <Profile
-          user={currentUser}
-          onEditProfile={() => setCurrentPage(Page.EDIT_PROFILE)}
-          onRefresh={() => api.getMe().then(setCurrentUser)}
-        />;
+        return (
+          <Profile
+            user={viewingUserId && viewingUserId !== currentUser?.id ? null : currentUser}
+            viewingUserId={viewingUserId}
+            onEditProfile={() => setCurrentPage(Page.EDIT_PROFILE)}
+            onNavigateToProfile={handleNavigateToProfile}
+          />
+        );
+
       case Page.EDIT_PROFILE:
         return <EditProfile user={currentUser} onSave={() => {
           // Refresh user data after save
           api.getMe().then(user => {
             setCurrentUser(user);
             setCurrentPage(Page.PROFILE);
+            setViewingUserId(null);
           });
-        }} onCancel={() => setCurrentPage(Page.PROFILE)} />;
+        }} onCancel={() => {
+          setCurrentPage(Page.PROFILE);
+          setViewingUserId(null);
+        }} />;
       case Page.CHAT:
         return <Chat onUpdateScore={handleUpdateScore} user={currentUser} onBack={() => setCurrentPage(Page.GROUPS)} />;
       case Page.GROUPS:
-        return <Groups onNavigate={(page) => setCurrentPage(page as Page)} />;
+        return <Groups onNavigate={(page) => {
+          if (page === Page.PROFILE) setViewingUserId(null);
+          setCurrentPage(page as Page);
+        }} />;
       case Page.RANKING:
-        return <Rankings users={rankingUsers} />;
+        return <Rankings users={rankingUsers} onNavigateToProfile={handleNavigateToProfile} />;
       case Page.SETTINGS:
-        return <Settings onNavigate={setCurrentPage} />;
+        return <Settings onNavigate={(page) => {
+          if (page === Page.PROFILE) setViewingUserId(null);
+          setCurrentPage(page as Page);
+        }} />;
       case Page.ACCOUNT_SETTINGS:
         return <AccountSettings onAccountDeleted={() => {
           setCurrentPage(Page.LOGIN);
         }} />;
       default:
-        return <Dashboard />;
+        return <Dashboard onUpdateHours={handleUpdateHours} user={currentUser} onNavigateToProfile={handleNavigateToProfile} />;
     }
   };
 
@@ -152,6 +175,18 @@ const App: React.FC = () => {
       default: return 'BoraEstudar!';
     }
   };
+
+  // Mostrar tela de loading enquanto verifica a sessão
+  if (isLoadingSession) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-900">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <p className="text-slate-400 text-sm">Verificando sessão...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (currentPage === Page.LOGIN) {
     return <Login onLogin={() => {

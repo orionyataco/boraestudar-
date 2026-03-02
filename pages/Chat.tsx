@@ -33,6 +33,8 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack }) => {
 
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
+    const [isSending, setIsSending] = useState(false);
+    const sendingRef = useRef(false);
     const scrollRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -109,15 +111,22 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack }) => {
     };
 
     const handleSend = async () => {
-        if (!input.trim()) return;
+        if (!input.trim() || isSending || sendingRef.current) return;
+
+        const textToSend = input.trim();
+        sendingRef.current = true;
+        setIsSending(true);
+        setInput(''); // Limpeza imediata para evitar re-envio
 
         try {
-            // Send plain text message
-            await api.createGroupPost(activeChannel, input);
-            setInput('');
+            await api.createGroupPost(activeChannel, textToSend);
             await loadMessages(activeChannel);
         } catch (error) {
             console.error('Error sending message:', error);
+            setInput(textToSend); // Restaura o texto se falhar
+        } finally {
+            setIsSending(false);
+            sendingRef.current = false;
         }
     };
 
@@ -572,16 +581,23 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack }) => {
                                 type="text"
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey && !isSending) {
+                                        e.preventDefault();
+                                        handleSend();
+                                    }
+                                }}
                                 placeholder="Digite sua mensagem..."
                                 className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 px-4 pl-4 text-white focus:outline-none focus:border-blue-500 transition-colors"
+                                disabled={isSending}
                             />
                         </div>
                         <button
                             onClick={handleSend}
-                            className="bg-blue-600 hover:bg-blue-500 text-white p-3 rounded-xl transition-colors shadow-lg shadow-blue-900/20"
+                            disabled={isSending || !input.trim()}
+                            className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white p-3 rounded-xl transition-colors shadow-lg shadow-blue-900/20"
                         >
-                            <Send size={20} />
+                            <Send size={20} className={isSending ? 'animate-pulse' : ''} />
                         </button>
                     </div>
                 </div>
@@ -730,5 +746,6 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack }) => {
                 </div>
             )}
         </div>
+
     );
 };

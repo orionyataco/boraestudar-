@@ -42,38 +42,74 @@ const data = [
 ];
 
 interface ProfileProps {
-    user: any;
+    user: any; // Current logged in user
+    viewingUserId?: string | null; // ID of the user being viewed (if any)
     onEditProfile: () => void;
     onRefresh: () => void;
+    onNavigateToProfile?: (userId: string) => void;
 }
 
-export const Profile: React.FC<ProfileProps> = ({ user, onEditProfile, onRefresh }) => {
+export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUserId, onEditProfile, onRefresh, onNavigateToProfile }) => {
+    const [profileUser, setProfileUser] = useState<any>(null);
+
     const [isFollowing, setIsFollowing] = useState(false);
-    const [followersCount, setFollowersCount] = useState(user?.followers_count || 0);
-    const [followingCount, setFollowingCount] = useState(user?.following_count || 0);
+    const [followersCount, setFollowersCount] = useState(0);
+    const [followingCount, setFollowingCount] = useState(0);
+    const [isLoading, setIsLoading] = useState(true);
 
-    const handleFollow = () => {
-        if (isFollowing) {
-            setFollowersCount(prev => prev - 1);
-        } else {
-            setFollowersCount(prev => prev + 1);
-        }
-        setIsFollowing(!isFollowing);
-    };
-
-    // Social & Search State
     const [suggestions, setSuggestions] = useState<any[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
-    const [currentUserId, setCurrentUserId] = useState<string | null>(null); // Added this line
+    const [myId, setMyId] = useState<string | null>(null);
 
     useEffect(() => {
+        loadProfile();
         loadSuggestions();
-        supabase.auth.getUser().then(({ data: { user } }) => { // Moved this block here
-            if (user) setCurrentUserId(user.id);
+        supabase.auth.getUser().then(({ data: { user } }) => {
+            if (user) setMyId(user.id);
         });
-    }, []);
+    }, [viewingUserId]);
+
+    const loadProfile = async () => {
+        setIsLoading(true);
+        try {
+            const userId = viewingUserId || (await api.getCurrentUserId());
+            if (!userId) return;
+
+            const userData = await api.getUser(userId);
+            setProfileUser(userData);
+            setFollowersCount(userData.followers_count || 0);
+            setFollowingCount(userData.following_count || 0);
+
+            if (viewingUserId && viewingUserId !== myId) {
+                const following = await api.isFollowing(viewingUserId);
+                setIsFollowing(following);
+            }
+        } catch (error) {
+            console.error('Error loading profile:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleFollowToggle = async () => {
+        if (!profileUser || !myId) return;
+
+        try {
+            if (isFollowing) {
+                await api.unfollowUser(profileUser.id);
+                setFollowersCount(prev => prev - 1);
+                setIsFollowing(false);
+            } else {
+                await api.followUser(profileUser.id);
+                setFollowersCount(prev => prev + 1);
+                setIsFollowing(true);
+            }
+        } catch (error: any) {
+            alert(error.message);
+        }
+    };
 
     const loadSuggestions = async () => {
         try {
@@ -92,9 +128,14 @@ export const Profile: React.FC<ProfileProps> = ({ user, onEditProfile, onRefresh
         }
 
         try {
-            setIsSearching(true); // Set searching state
+            setIsSearching(true);
             const results = await api.searchUsers(query);
-            setSearchResults(results);
+            // Mark if I'm following them
+            const resultsWithFollowState = await Promise.all(results.map(async (u: any) => {
+                const following = await api.isFollowing(u.id);
+                return { ...u, isFollowing: following, isMe: u.id === myId };
+            }));
+            setSearchResults(resultsWithFollowState);
         } catch (error) {
             console.error(error);
         } finally {
@@ -105,13 +146,11 @@ export const Profile: React.FC<ProfileProps> = ({ user, onEditProfile, onRefresh
     const handleFollowUser = async (userId: string) => {
         try {
             await api.followUser(userId);
-
-            // Optimistic update
             setSuggestions(prev => prev.filter(u => u.id !== userId));
             setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, isFollowing: true } : u));
-
-            // Update my following count
-            setFollowingCount(prev => prev + 1);
+            if (!viewingUserId || viewingUserId === myId) {
+                setFollowingCount(prev => prev + 1);
+            }
         } catch (error: any) {
             alert(error.message);
         }
@@ -120,11 +159,10 @@ export const Profile: React.FC<ProfileProps> = ({ user, onEditProfile, onRefresh
     const handleUnfollowUser = async (userId: string) => {
         try {
             await api.unfollowUser(userId);
-
             setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, isFollowing: false } : u));
-
-            // Update my following count
-            setFollowingCount(prev => prev - 1);
+            if (!viewingUserId || viewingUserId === myId) {
+                setFollowingCount(prev => prev - 1);
+            }
         } catch (error: any) {
             alert(error.message);
         }
@@ -150,6 +188,18 @@ export const Profile: React.FC<ProfileProps> = ({ user, onEditProfile, onRefresh
             }
         }
     };
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+            </div>
+        );
+    }
+
+    const isMe = !viewingUserId || viewingUserId === myId;
+    const user = profileUser;
+
     return (
         <div className="max-w-6xl mx-auto pt-4 space-y-8">
             {/* Header Profile */}
@@ -182,9 +232,9 @@ export const Profile: React.FC<ProfileProps> = ({ user, onEditProfile, onRefresh
                 </div>
 
                 <div className="flex gap-3">
-                    {!currentUserId || user?.id !== currentUserId ? (
+                    {!isMe ? (
                         <button
-                            onClick={handleFollow}
+                            onClick={handleFollowToggle}
                             className={`px-6 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${isFollowing
                                 ? 'bg-slate-800 border border-slate-600 text-white hover:border-red-500/50 hover:text-red-400'
                                 : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/20'
@@ -202,13 +252,14 @@ export const Profile: React.FC<ProfileProps> = ({ user, onEditProfile, onRefresh
                                 </>
                             )}
                         </button>
-                    ) : null}
-                    <button
-                        onClick={onEditProfile}
-                        className="px-6 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-white font-medium transition-colors"
-                    >
-                        Editar Perfil
-                    </button>
+                    ) : (
+                        <button
+                            onClick={onEditProfile}
+                            className="px-6 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-white font-medium transition-colors"
+                        >
+                            Editar Perfil
+                        </button>
+                    )}
                     <button className="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-slate-400 hover:text-white transition-colors" title="Compartilhar Perfil">
                         <Share2 size={20} />
                     </button>
@@ -300,7 +351,10 @@ export const Profile: React.FC<ProfileProps> = ({ user, onEditProfile, onRefresh
                                     ) : searchResults.length > 0 ? (
                                         searchResults.map((u) => (
                                             <div key={u.id} className="flex items-center justify-between">
-                                                <div className="flex items-center gap-3">
+                                                <div
+                                                    className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+                                                    onClick={() => onNavigateToProfile?.(u.id)}
+                                                >
                                                     <img src={u.avatar && !u.avatar.startsWith('blob:') ? u.avatar : `https://picsum.photos/seed/${u.id}/100/100`} className="w-8 h-8 rounded-full object-cover" alt={u.name} />
                                                     <div className="overflow-hidden">
                                                         <p className="font-semibold text-sm text-white truncate w-24">{u.name}</p>
@@ -329,7 +383,10 @@ export const Profile: React.FC<ProfileProps> = ({ user, onEditProfile, onRefresh
                                     {suggestions.length > 0 ? (
                                         suggestions.map((u) => (
                                             <div key={u.id} className="flex items-center justify-between group">
-                                                <div className="flex items-center gap-3">
+                                                <div
+                                                    className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+                                                    onClick={() => onNavigateToProfile?.(u.id)}
+                                                >
                                                     <img src={u.avatar && !u.avatar.startsWith('blob:') ? u.avatar : `https://picsum.photos/seed/${u.id}/100/100`} className="w-8 h-8 rounded-full object-cover" alt={u.name} />
                                                     <div>
                                                         <p className="font-semibold text-sm text-white">{u.name}</p>

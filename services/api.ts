@@ -158,6 +158,40 @@ export const api = {
         });
     },
 
+    async getFollowingPosts() {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('Not authenticated');
+
+        // Get list of followed user IDs
+        const { data: followed } = await supabase
+            .from('follows')
+            .select('following_id')
+            .eq('follower_id', user.id);
+
+        const followedIds = followed?.map(f => f.following_id) || [];
+        
+        // Include my own posts in "Following" feed too
+        followedIds.push(user.id);
+
+        const { data, error } = await supabase
+            .from('posts')
+            .select(`
+                id, content, image_start, image_end, created_at,
+                users!posts_user_id_fkey (id, name, avatar)
+            `)
+            .in('user_id', followedIds)
+            .order('created_at', { ascending: false })
+            .limit(50);
+
+        if (error) throw error;
+        return data.map(p => ({
+            ...p,
+            imageStart: p.image_start,
+            imageEnd: p.image_end,
+            user: p.users
+        }));
+    },
+
     async deletePost(postId) {
         const { error } = await supabase
             .from('posts')
@@ -422,6 +456,35 @@ export const api = {
             .eq('id', user?.id);
         if (error) throw error;
         return { message: 'Profile updated' };
+    },
+
+    async getUser(userId: string) {
+        const { data, error } = await supabase
+            .from('users')
+            .select(`
+                id, name, email, avatar, bio, followers_count, following_count,
+                user_progress (hours, points, trend)
+            `)
+            .eq('id', userId)
+            .single();
+
+        if (error) throw error;
+        const progress = data.user_progress || { hours: 0, points: 0, trend: 'neutral' };
+        return { ...data, ...progress };
+    },
+
+    async isFollowing(targetUserId: string) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return false;
+
+        const { data, error } = await supabase
+            .from('follows')
+            .select('id')
+            .eq('follower_id', user.id)
+            .eq('following_id', targetUserId)
+            .single();
+
+        return !!data;
     },
 
     async changePassword(currentPassword, newPassword) {
