@@ -338,10 +338,10 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
-                    { label: 'Horas de Estudo', value: formatStudyTime(user?.hours || 0), sub: '+5% na última semana', color: 'text-green-400', icon: Clock, onReset: handleResetHours },
-                    { label: 'Pontos', value: user?.points || '0', sub: '+12% na última semana', color: 'text-green-400', icon: Zap, onReset: handleResetPoints },
-                    { label: 'Questões Feitas', value: user?.questions_count || '0', sub: '+2 na última semana', color: 'text-green-400', icon: BookOpen, onReset: handleResetQuestions },
-                    { label: 'Acertos Gerais', value: `${user?.accuracy || 0}%`, sub: '-1% na última semana', color: 'text-red-400', icon: Target, onReset: handleResetAccuracy },
+                    { label: 'Horas de Estudo', value: formatStudyTime(user?.hours || 0), sub: '', color: 'text-green-400', icon: Clock, onReset: handleResetHours },
+                    { label: 'Pontos', value: user?.points || '0', sub: '', color: 'text-green-400', icon: Zap, onReset: handleResetPoints },
+                    { label: 'Questões Feitas', value: user?.questions_count || '0', sub: '', color: 'text-green-400', icon: BookOpen, onReset: handleResetQuestions },
+                    { label: 'Acertos Gerais', value: `${user?.accuracy || 0}%`, sub: '', color: 'text-red-400', icon: Target, onReset: handleResetAccuracy },
                 ].map((stat, idx) => (
                     <div key={idx} className="bg-slate-800 p-6 rounded-2xl border border-slate-700 relative group">
                         <div className="flex justify-between items-start mb-2">

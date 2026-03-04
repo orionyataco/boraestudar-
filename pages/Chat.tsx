@@ -251,7 +251,7 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
             question: quizQuestion,
             options: validOptions,
             correctIndex: newCorrectIndex,
-            points: 50,
+            points: 1,
             answeredBy: []
         };
 
