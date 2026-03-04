@@ -12,7 +12,7 @@ interface AdminDashboardProps {
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
     const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'posts' | 'groups'>('overview');
-    const [stats, setStats] = useState({ totalUsers: 0, totalPosts: 0, totalGroups: 0 });
+    const [stats, setStats] = useState({ totalUsers: 0, onlineUsers: 0, totalPosts: 0, totalGroups: 0 });
     const [users, setUsers] = useState<any[]>([]);
     const [posts, setPosts] = useState<any[]>([]);
     const [groups, setGroups] = useState<any[]>([]);
@@ -111,6 +111,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
 
     const statCards = [
         { label: 'Total de Usuários', value: stats.totalUsers, icon: Users, color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20', tab: 'users' },
+        { label: 'Usuários Online', value: stats.onlineUsers, icon: Users, color: 'text-green-400', bg: 'bg-green-500/10 border-green-500/20', tab: 'users' },
         { label: 'Total de Posts', value: stats.totalPosts, icon: FileText, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20', tab: 'posts' },
         { label: 'Total de Grupos', value: stats.totalGroups, icon: Layers, color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/20', tab: 'groups' },
     ];
@@ -147,7 +148,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
             </div>
 
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {statCards.map((card, i) => (
                     <button
                         key={i}

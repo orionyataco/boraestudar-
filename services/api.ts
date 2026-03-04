@@ -703,13 +703,15 @@ export const api = {
     // ----- ADMIN -----
     admin: {
         async getStats() {
-            const [usersRes, postsRes, groupsRes] = await Promise.all([
+            const [usersRes, onlineRes, postsRes, groupsRes] = await Promise.all([
                 supabase.from('users').select('id', { count: 'exact', head: true }),
+                supabase.from('users').select('id', { count: 'exact', head: true }).eq('status', 'online'),
                 supabase.from('posts').select('id', { count: 'exact', head: true }),
                 supabase.from('groups').select('id', { count: 'exact', head: true }),
             ]);
             return {
                 totalUsers: usersRes.count || 0,
+                onlineUsers: onlineRes.count || 0,
                 totalPosts: postsRes.count || 0,
                 totalGroups: groupsRes.count || 0,
             };
