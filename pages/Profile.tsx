@@ -58,6 +58,7 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
     const [isLoading, setIsLoading] = useState(true);
 
     const [suggestions, setSuggestions] = useState<any[]>([]);
+    const [followingList, setFollowingList] = useState<any[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
@@ -101,10 +102,12 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
                 await api.unfollowUser(profileUser.id);
                 setFollowersCount(prev => prev - 1);
                 setIsFollowing(false);
+                setFollowingList(prev => prev.filter(u => u.id !== profileUser.id));
             } else {
                 await api.followUser(profileUser.id);
                 setFollowersCount(prev => prev + 1);
                 setIsFollowing(true);
+                setFollowingList(prev => [...prev, profileUser]);
             }
         } catch (error: any) {
             alert(error.message);
@@ -113,10 +116,14 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
 
     const loadSuggestions = async () => {
         try {
-            const data = await api.getSuggestedUsers();
-            setSuggestions(data);
+            const [suggestedData, followingData] = await Promise.all([
+                api.getSuggestedUsers(),
+                api.getFollowingUsers()
+            ]);
+            setSuggestions(suggestedData);
+            setFollowingList(followingData);
         } catch (error: any) {
-            console.error('Error loading suggestions:', error);
+            console.error('Error loading social data:', error);
         }
     };
 
@@ -146,8 +153,12 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
     const handleFollowUser = async (userId: string) => {
         try {
             await api.followUser(userId);
+            const followedUser = suggestions.find(u => u.id === userId) || searchResults.find(u => u.id === userId);
             setSuggestions(prev => prev.filter(u => u.id !== userId));
             setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, isFollowing: true } : u));
+            if (followedUser) {
+                setFollowingList(prev => [...prev, followedUser]);
+            }
             if (!viewingUserId || viewingUserId === myId) {
                 setFollowingCount(prev => prev + 1);
             }
@@ -160,9 +171,12 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
         try {
             await api.unfollowUser(userId);
             setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, isFollowing: false } : u));
+            setFollowingList(prev => prev.filter(u => u.id !== userId));
             if (!viewingUserId || viewingUserId === myId) {
                 setFollowingCount(prev => prev - 1);
             }
+            // Refresh suggestions after unfollowing
+            loadSuggestions();
         } catch (error: any) {
             alert(error.message);
         }
@@ -376,33 +390,64 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
                                 </>
                             ) : (
                                 <>
-                                    <div className="flex justify-between items-center">
+                                    {/* Following List */}
+                                    {followingList.length > 0 && (
+                                        <div className="mb-6">
+                                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Seguindo</h4>
+                                            <div className="space-y-4">
+                                                {followingList.map((u) => (
+                                                    <div key={u.id} className="flex items-center justify-between group">
+                                                        <div
+                                                            className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+                                                            onClick={() => onNavigateToProfile?.(u.id)}
+                                                        >
+                                                            <img src={u.avatar && !u.avatar.startsWith('blob:') ? u.avatar : `https://picsum.photos/seed/${u.id}/100/100`} className="w-8 h-8 rounded-full object-cover" alt={u.name} />
+                                                            <div>
+                                                                <p className="font-semibold text-sm text-white">{u.name}</p>
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => handleUnfollowUser(u.id)}
+                                                            className="p-1.5 bg-slate-700 text-slate-400 hover:text-red-400 rounded-lg transition-colors"
+                                                            title="Deixar de seguir"
+                                                        >
+                                                            <UserCheck size={16} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="flex justify-between items-center mb-3">
                                         <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sugestões</h4>
                                         <button onClick={loadSuggestions} className="text-[10px] text-blue-400 hover:text-blue-300">Atualizar</button>
                                     </div>
                                     {suggestions.length > 0 ? (
-                                        suggestions.map((u) => (
-                                            <div key={u.id} className="flex items-center justify-between group">
-                                                <div
-                                                    className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
-                                                    onClick={() => onNavigateToProfile?.(u.id)}
-                                                >
-                                                    <img src={u.avatar && !u.avatar.startsWith('blob:') ? u.avatar : `https://picsum.photos/seed/${u.id}/100/100`} className="w-8 h-8 rounded-full object-cover" alt={u.name} />
-                                                    <div>
-                                                        <p className="font-semibold text-sm text-white">{u.name}</p>
-                                                        <p className="text-[10px] text-slate-500">{u.followers_count} seguidores</p>
+                                        <div className="space-y-4">
+                                            {suggestions.map((u) => (
+                                                <div key={u.id} className="flex items-center justify-between group">
+                                                    <div
+                                                        className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+                                                        onClick={() => onNavigateToProfile?.(u.id)}
+                                                    >
+                                                        <img src={u.avatar && !u.avatar.startsWith('blob:') ? u.avatar : `https://picsum.photos/seed/${u.id}/100/100`} className="w-8 h-8 rounded-full object-cover" alt={u.name} />
+                                                        <div>
+                                                            <p className="font-semibold text-sm text-white">{u.name}</p>
+                                                            <p className="text-[10px] text-slate-500">{u.followers_count} seguidores</p>
+                                                        </div>
                                                     </div>
+                                                    <button
+                                                        onClick={() => handleFollowUser(u.id)}
+                                                        className="p-1.5 bg-blue-600/10 text-blue-400 hover:bg-blue-600 hover:text-white rounded-lg transition-colors"
+                                                    >
+                                                        <UserPlus size={16} />
+                                                    </button>
                                                 </div>
-                                                <button
-                                                    onClick={() => handleFollowUser(u.id)}
-                                                    className="p-1.5 bg-blue-600/10 text-blue-400 hover:bg-blue-600 hover:text-white rounded-lg transition-colors"
-                                                >
-                                                    <UserPlus size={16} />
-                                                </button>
-                                            </div>
-                                        ))
+                                            ))}
+                                        </div>
                                     ) : (
-                                        <div className="text-center text-slate-500 text-sm italic">Sem sugestões.</div>
+                                        <div className="text-center text-slate-500 text-sm italic py-2">Sem sugestões.</div>
                                     )}
                                 </>
                             )}

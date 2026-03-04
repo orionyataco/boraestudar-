@@ -612,13 +612,41 @@ export const api = {
 
     async getSuggestedUsers() {
         const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return [];
+
+        // Get people I already follow
+        const { data: followed } = await supabase
+            .from('follows')
+            .select('following_id')
+            .eq('follower_id', user.id);
+
+        const followedIds = followed?.map(f => f.following_id) || [];
+        followedIds.push(user.id); // Exclude myself
+
         const { data, error } = await supabase
             .from('users')
             .select('*')
-            .neq('id', user?.id)
+            .not('id', 'in', `(${followedIds.join(',')})`)
             .limit(5);
+
         if (error) throw error;
         return data;
+    },
+
+    async getFollowingUsers() {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return [];
+
+        const { data, error } = await supabase
+            .from('follows')
+            .select(`
+                following_id,
+                users:following_id (id, name, avatar, followers_count)
+            `)
+            .eq('follower_id', user.id);
+
+        if (error) throw error;
+        return data.map((f: any) => f.users);
     },
 
     async followUser(userId) {
