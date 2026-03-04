@@ -32,7 +32,7 @@ export const api = {
         const { data, error } = await supabase
             .from('users')
             .select(`
-                id, name, email, avatar, bio, followers_count, following_count
+                id, name, email, avatar, bio, role, followers_count, following_count
             `)
             .eq('id', user.id)
             .single();
@@ -169,7 +169,7 @@ export const api = {
             .eq('follower_id', user.id);
 
         const followedIds = followed?.map(f => f.following_id) || [];
-        
+
         // Include my own posts in "Following" feed too
         followedIds.push(user.id);
 
@@ -698,5 +698,69 @@ export const api = {
 
         if (error) throw error;
         return { message: 'Points reset' };
+    },
+
+    // ----- ADMIN -----
+    admin: {
+        async getStats() {
+            const [usersRes, postsRes, groupsRes] = await Promise.all([
+                supabase.from('users').select('id', { count: 'exact', head: true }),
+                supabase.from('posts').select('id', { count: 'exact', head: true }),
+                supabase.from('groups').select('id', { count: 'exact', head: true }),
+            ]);
+            return {
+                totalUsers: usersRes.count || 0,
+                totalPosts: postsRes.count || 0,
+                totalGroups: groupsRes.count || 0,
+            };
+        },
+
+        async getAllUsers() {
+            const { data, error } = await supabase
+                .from('users')
+                .select('id, name, email, avatar, role, followers_count, following_count, created_at')
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            return data;
+        },
+
+        async getAllPosts() {
+            const { data, error } = await supabase
+                .from('posts')
+                .select(`
+                    id, content, image_start, image_end, created_at,
+                    users!posts_user_id_fkey (id, name, avatar)
+                `)
+                .order('created_at', { ascending: false })
+                .limit(100);
+            if (error) throw error;
+            return data.map((p: any) => ({
+                ...p,
+                user: p.users,
+                imageStart: p.image_start,
+                imageEnd: p.image_end,
+            }));
+        },
+
+        async deletePost(postId: string) {
+            const { error } = await supabase.from('posts').delete().eq('id', postId);
+            if (error) throw error;
+            return { message: 'Post deletado' };
+        },
+
+        async deleteUser(userId: string) {
+            const { error } = await supabase.from('users').delete().eq('id', userId);
+            if (error) throw error;
+            return { message: 'Usuário removido' };
+        },
+
+        async setUserRole(userId: string, role: string) {
+            const { error } = await supabase
+                .from('users')
+                .update({ role })
+                .eq('id', userId);
+            if (error) throw error;
+            return { message: 'Role atualizada' };
+        },
     },
 };

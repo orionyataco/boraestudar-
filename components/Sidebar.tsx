@@ -10,7 +10,8 @@ import {
   Rocket,
   MessageCircle,
   UsersRound,
-  X
+  X,
+  Shield
 } from 'lucide-react';
 import { Page } from '../types';
 
@@ -20,6 +21,7 @@ interface SidebarProps {
   onLogout: () => void;
   isMobileMenuOpen?: boolean;
   onCloseMobileMenu?: () => void;
+  currentUser?: any;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -27,7 +29,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setPage,
   onLogout,
   isMobileMenuOpen = false,
-  onCloseMobileMenu
+  onCloseMobileMenu,
+  currentUser
 }) => {
   const navItems = [
     { id: Page.DASHBOARD, icon: <LayoutDashboard size={20} />, label: 'Feed' },
@@ -93,6 +96,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span>{item.label}</span>
             </button>
           ))}
+
+          {/* Admin link — only visible for admin users */}
+          {currentUser?.role === 'admin' && (
+            <button
+              onClick={() => handleNavClick(Page.ADMIN)}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 mt-2 ${currentPage === Page.ADMIN
+                ? 'bg-red-600/20 text-red-400 font-medium border border-red-500/20'
+                : 'text-red-400/70 hover:bg-red-500/10 hover:text-red-400 border border-red-500/10'
+                }`}
+            >
+              <Shield size={20} />
+              <span>Painel Admin</span>
+            </button>
+          )}
         </nav>
 
         {/* Bottom Section */}

@@ -10,6 +10,7 @@ import { Rankings } from './pages/Rankings';
 import { EditProfile } from './pages/EditProfile';
 import { Settings } from './pages/Settings';
 import { AccountSettings } from './pages/AccountSettings';
+import { AdminDashboard } from './pages/AdminDashboard';
 import { Page, RankingUser } from './types';
 import { Bell, Settings as SettingsIcon, Rocket, Menu } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
@@ -159,6 +160,8 @@ const App: React.FC = () => {
         return <AccountSettings onAccountDeleted={() => {
           setCurrentPage(Page.LOGIN);
         }} />;
+      case Page.ADMIN:
+        return <AdminDashboard currentUser={currentUser} />;
       default:
         return <Dashboard onUpdateHours={handleUpdateHours} user={currentUser} onNavigateToProfile={handleNavigateToProfile} />;
     }
@@ -202,6 +205,7 @@ const App: React.FC = () => {
       <Sidebar
         currentPage={currentPage}
         setPage={setCurrentPage}
+        currentUser={currentUser}
         onLogout={async () => {
           await supabase.auth.signOut();
           setCurrentPage(Page.LOGIN);
