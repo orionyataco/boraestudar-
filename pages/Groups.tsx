@@ -4,7 +4,7 @@ import { api } from '../services/api';
 import { supabase } from '../services/supabaseClient';
 
 interface GroupsProps {
-    onNavigate?: (page: string) => void;
+    onNavigate?: (page: string, groupId?: string) => void;
 }
 
 export const Groups: React.FC<GroupsProps> = ({ onNavigate }) => {
@@ -63,10 +63,12 @@ export const Groups: React.FC<GroupsProps> = ({ onNavigate }) => {
 
         setIsLoading(true);
         try {
+            let createdGroupId: string | undefined;
             if (editingGroup) {
                 await api.updateGroup(editingGroup.id, newGroupName, newGroupDescription, newGroupImage);
             } else {
-                await api.createGroup(newGroupName, newGroupDescription, newGroupImage, newGroupIsPrivate);
+                const result = await api.createGroup(newGroupName, newGroupDescription, newGroupImage, newGroupIsPrivate);
+                createdGroupId = result?.id as string | undefined;
             }
 
             setShowCreateModal(false);
@@ -74,12 +76,12 @@ export const Groups: React.FC<GroupsProps> = ({ onNavigate }) => {
             setNewGroupName('');
             setNewGroupDescription('');
             setNewGroupImage('');
-            setNewGroupIsPrivate(false); // Reset private toggle
+            setNewGroupIsPrivate(false);
             await loadGroups();
 
             // Navigate to chat after creating group (only if not editing)
             if (!editingGroup && onNavigate) {
-                onNavigate('CHAT');
+                onNavigate('CHAT', createdGroupId);
             }
         } catch (error: any) {
             alert(error.message);
@@ -141,9 +143,9 @@ export const Groups: React.FC<GroupsProps> = ({ onNavigate }) => {
         try {
             await api.joinGroup(groupId);
             await loadGroups();
-            // Navigate to chat after joining group
+            // Navigate to chat after joining group, passing the specific group ID
             if (onNavigate) {
-                onNavigate('CHAT');
+                onNavigate('CHAT', groupId);
             }
         } catch (error: any) {
             alert(error.message);
@@ -154,11 +156,10 @@ export const Groups: React.FC<GroupsProps> = ({ onNavigate }) => {
         if (!joinCode.trim()) return;
         try {
             const res = await api.joinGroupViaCode(joinCode);
-            alert('Você entrou no grupo!');
             setShowJoinModal(false);
             setJoinCode('');
             await loadGroups();
-            if (onNavigate) onNavigate('CHAT');
+            if (onNavigate) onNavigate('CHAT', res?.groupId);
         } catch (error: any) {
             alert(error.message);
         }
@@ -267,7 +268,7 @@ export const Groups: React.FC<GroupsProps> = ({ onNavigate }) => {
                                         {group.member_count} {group.member_count === 1 ? 'membro' : 'membros'}
                                     </span>
                                     <button
-                                        onClick={() => onNavigate && onNavigate('CHAT')}
+                                        onClick={() => onNavigate && onNavigate('CHAT', group.id)}
                                         className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors"
                                     >
                                         Abrir Chat

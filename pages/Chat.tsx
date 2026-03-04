@@ -8,9 +8,10 @@ interface ChatProps {
     onUpdateScore: (points: number) => void;
     user: any;
     onBack?: () => void;
+    initialGroupId?: string;
 }
 
-export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack }) => {
+export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initialGroupId }) => {
     // Channels State
     const [channels, setChannels] = useState<any[]>([]);
     const [activeChannel, setActiveChannel] = useState<string>('default');
@@ -47,7 +48,11 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack }) => {
         try {
             const groups = await api.getGroups();
             setChannels(groups);
-            if (groups.length > 0 && activeChannel === 'default') {
+            // If a specific group was requested (e.g., from joining or clicking a group), use it.
+            // Otherwise, only default to groups[0] if we haven't set a channel yet.
+            if (initialGroupId) {
+                setActiveChannel(initialGroupId);
+            } else if (groups.length > 0 && activeChannel === 'default') {
                 setActiveChannel(groups[0].id);
             }
         } catch (error) {

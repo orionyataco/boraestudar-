@@ -110,6 +110,7 @@ const App: React.FC = () => {
   };
 
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
 
   const handleNavigateToProfile = (userId: string) => {
     setViewingUserId(userId);
@@ -143,9 +144,10 @@ const App: React.FC = () => {
           setViewingUserId(null);
         }} />;
       case Page.CHAT:
-        return <Chat onUpdateScore={handleUpdateScore} user={currentUser} onBack={() => setCurrentPage(Page.GROUPS)} />;
+        return <Chat onUpdateScore={handleUpdateScore} user={currentUser} initialGroupId={selectedGroupId ?? undefined} onBack={() => setCurrentPage(Page.GROUPS)} />;
       case Page.GROUPS:
-        return <Groups onNavigate={(page) => {
+        return <Groups onNavigate={(page, groupId) => {
+          if (groupId) setSelectedGroupId(groupId);
           if (page === Page.PROFILE) setViewingUserId(null);
           setCurrentPage(page as Page);
         }} />;
