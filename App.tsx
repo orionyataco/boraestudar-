@@ -117,6 +117,24 @@ const App: React.FC = () => {
     setCurrentPage(Page.PROFILE);
   };
 
+  const handlePageChange = (page: Page, options?: { groupId?: string; userId?: string | null }) => {
+    if (options?.groupId) setSelectedGroupId(options.groupId);
+
+    // Explicitly set viewingUserId. If not provided, it depends on the page.
+    // If navigating to PROFILE via handlePageChange (e.g. Sidebar click), we reset it to null (me).
+    // If it's a specific profile navigation, options.userId will be present.
+    if (options && options.userId !== undefined) {
+      setViewingUserId(options.userId);
+    } else if (page === Page.PROFILE) {
+      setViewingUserId(null);
+    } else if (page !== Page.EDIT_PROFILE && page !== Page.SETTINGS) {
+      // Optional: reset on other pages too if desired, but PROFILE is the critical one.
+      setViewingUserId(null);
+    }
+
+    setCurrentPage(page);
+  };
+
   const renderPage = () => {
     switch (currentPage) {
       case Page.DASHBOARD:
@@ -147,16 +165,13 @@ const App: React.FC = () => {
         return <Chat onUpdateScore={handleUpdateScore} user={currentUser} initialGroupId={selectedGroupId ?? undefined} onBack={() => setCurrentPage(Page.GROUPS)} />;
       case Page.GROUPS:
         return <Groups onNavigate={(page, groupId) => {
-          if (groupId) setSelectedGroupId(groupId);
-          if (page === Page.PROFILE) setViewingUserId(null);
-          setCurrentPage(page as Page);
+          handlePageChange(page as Page, { groupId });
         }} />;
       case Page.RANKING:
         return <Rankings users={rankingUsers} onNavigateToProfile={handleNavigateToProfile} />;
       case Page.SETTINGS:
         return <Settings onNavigate={(page) => {
-          if (page === Page.PROFILE) setViewingUserId(null);
-          setCurrentPage(page as Page);
+          handlePageChange(page as Page);
         }} />;
       case Page.ACCOUNT_SETTINGS:
         return <AccountSettings onAccountDeleted={() => {
@@ -206,7 +221,7 @@ const App: React.FC = () => {
     <div className="flex bg-slate-900 min-h-screen font-sans text-slate-200">
       <Sidebar
         currentPage={currentPage}
-        setPage={setCurrentPage}
+        setPage={handlePageChange}
         currentUser={currentUser}
         onLogout={async () => {
           await supabase.auth.signOut();
@@ -239,7 +254,7 @@ const App: React.FC = () => {
               src={currentUser?.avatar && !currentUser.avatar.startsWith('blob:') ? currentUser.avatar : "https://picsum.photos/id/64/100/100"}
               className="w-8 h-8 rounded-full border border-slate-600 cursor-pointer"
               alt="Profile"
-              onClick={() => setCurrentPage(Page.PROFILE)}
+              onClick={() => handlePageChange(Page.PROFILE)}
             />
           </div>
         )}
