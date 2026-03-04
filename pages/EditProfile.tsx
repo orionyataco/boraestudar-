@@ -13,6 +13,9 @@ export const EditProfile: React.FC<EditProfileProps> = ({ user, onSave, onCancel
         name: user?.name || '',
         bio: user?.bio || '',
         avatar: user?.avatar || 'https://picsum.photos/id/64/200/200',
+        username: user?.username || '',
+        birthDate: user?.birth_date || '',
+        gender: user?.gender || '',
     });
     const [isLoading, setIsLoading] = useState(false);
 
@@ -38,7 +41,14 @@ export const EditProfile: React.FC<EditProfileProps> = ({ user, onSave, onCancel
         e.preventDefault();
         setIsLoading(true);
         try {
-            await api.updateProfile(formData.name, formData.bio, formData.avatar);
+            await api.updateProfile(
+                formData.name,
+                formData.bio,
+                formData.avatar,
+                formData.username,
+                formData.birthDate,
+                formData.gender
+            );
             onSave();
         } catch (error: any) {
             alert(error.message || 'Erro ao atualizar perfil');
@@ -108,7 +118,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ user, onSave, onCancel
                                 <input
                                     type="text"
                                     name="username"
-                                    value={(formData as any).username}
+                                    value={formData.username}
                                     onChange={handleChange}
                                     className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-white focus:border-blue-500 outline-none transition-colors"
                                 />
@@ -120,7 +130,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ user, onSave, onCancel
                                 <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Gênero</label>
                                 <select
                                     name="gender"
-                                    value={(formData as any).gender}
+                                    value={formData.gender}
                                     onChange={handleChange}
                                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 outline-none transition-colors appearance-none"
                                 >
@@ -138,7 +148,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ user, onSave, onCancel
                                     <input
                                         type="date"
                                         name="birthDate"
-                                        value={(formData as any).birthDate}
+                                        value={formData.birthDate}
                                         onChange={handleChange}
                                         className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-white focus:border-blue-500 outline-none transition-colors"
                                     />

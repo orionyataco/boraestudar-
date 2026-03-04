@@ -78,6 +78,7 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
     const [isSearching, setIsSearching] = useState(false);
     const [myId, setMyId] = useState<string | null>(null);
     const [chartPeriod, setChartPeriod] = useState<'weekly' | 'monthly' | 'yearly'>('weekly');
+    const [showAllFollowing, setShowAllFollowing] = useState(false);
 
     useEffect(() => {
         loadProfile();
@@ -229,6 +230,34 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
         }
     };
 
+    const handleResetQuestions = async () => {
+        if (confirm('Tem certeza que deseja ZERAR seu contador de QUESTÕES? Esta ação não pode ser desfeita.')) {
+            try {
+                await api.resetQuestionsCount();
+                if (profileUser) {
+                    setProfileUser({ ...profileUser, questions_count: 0 });
+                }
+                onRefresh();
+            } catch (error: any) {
+                alert(error.message);
+            }
+        }
+    };
+
+    const handleResetAccuracy = async () => {
+        if (confirm('Tem certeza que deseja ZERAR sua porcentagem de ACERTOS? Esta ação não pode ser desfeita.')) {
+            try {
+                await api.resetAccuracy();
+                if (profileUser) {
+                    setProfileUser({ ...profileUser, accuracy: 0 });
+                }
+                onRefresh();
+            } catch (error: any) {
+                alert(error.message);
+            }
+        }
+    };
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
@@ -310,14 +339,14 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
                     { label: 'Horas de Estudo', value: formatStudyTime(user?.hours || 0), sub: '+5% na última semana', color: 'text-green-400', icon: Clock, onReset: handleResetHours },
-                    { label: 'Pontos', value: user?.points || '0', sub: '+12% na última semana', color: 'text-green-400', icon: CheckSquareIcon, onReset: handleResetPoints },
-                    { label: 'Simulados Feitos', value: '22', sub: '+2 na última semana', color: 'text-green-400', icon: BookOpen },
-                    { label: 'Acertos Gerais', value: '82%', sub: '-1% na última semana', color: 'text-red-400', icon: Target },
+                    { label: 'Pontos', value: user?.points || '0', sub: '+12% na última semana', color: 'text-green-400', icon: Zap, onReset: handleResetPoints },
+                    { label: 'Questões Feitas', value: user?.questions_count || '0', sub: '+2 na última semana', color: 'text-green-400', icon: BookOpen, onReset: handleResetQuestions },
+                    { label: 'Acertos Gerais', value: `${user?.accuracy || 0}%`, sub: '-1% na última semana', color: 'text-red-400', icon: Target, onReset: handleResetAccuracy },
                 ].map((stat, idx) => (
                     <div key={idx} className="bg-slate-800 p-6 rounded-2xl border border-slate-700 relative group">
                         <div className="flex justify-between items-start mb-2">
                             <span className="text-slate-400 text-sm font-medium">{stat.label}</span>
-                            {stat.onReset && (
+                            {isMe && stat.onReset && (
                                 <button
                                     onClick={stat.onReset}
                                     className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"
@@ -438,7 +467,7 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
                                         <div className="mb-6">
                                             <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Seguindo</h4>
                                             <div className="space-y-4">
-                                                {followingList.map((u) => (
+                                                {followingList.slice(0, showAllFollowing ? undefined : 5).map((u) => (
                                                     <div key={u.id} className="flex items-center justify-between group">
                                                         <div
                                                             className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
@@ -459,6 +488,14 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
                                                     </div>
                                                 ))}
                                             </div>
+                                            {followingList.length > 5 && (
+                                                <button
+                                                    onClick={() => setShowAllFollowing(!showAllFollowing)}
+                                                    className="w-full mt-4 py-2 text-xs font-bold text-blue-400 hover:text-blue-300 transition-colors border border-slate-700 rounded-lg hover:bg-slate-700/50"
+                                                >
+                                                    {showAllFollowing ? 'Ver menos' : `Ver todos (${followingCount})`}
+                                                </button>
+                                            )}
                                         </div>
                                     )}
 

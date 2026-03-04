@@ -32,7 +32,7 @@ export const api = {
         const { data, error } = await supabase
             .from('users')
             .select(`
-                id, name, email, avatar, bio, role, followers_count, following_count
+                id, name, email, avatar, bio, role, followers_count, following_count, username, birth_date, gender
             `)
             .eq('id', user.id)
             .single();
@@ -42,7 +42,7 @@ export const api = {
         // Fetch progress separately or via join if table structure allows
         const { data: progress } = await supabase
             .from('user_progress')
-            .select('hours, points, trend')
+            .select('hours, points, trend, questions_count, accuracy')
             .eq('user_id', user.id)
             .single();
 
@@ -448,11 +448,11 @@ export const api = {
     },
 
     // Profile & Account
-    async updateProfile(name, bio, avatar) {
+    async updateProfile(name, bio, avatar, username, birthDate, gender) {
         const { data: { user } } = await supabase.auth.getUser();
         const { error } = await supabase
             .from('users')
-            .update({ name, bio, avatar })
+            .update({ name, bio, avatar, username, birth_date: birthDate, gender })
             .eq('id', user?.id);
         if (error) throw error;
         return { message: 'Profile updated' };
@@ -462,14 +462,14 @@ export const api = {
         const { data, error } = await supabase
             .from('users')
             .select(`
-                id, name, email, avatar, bio, followers_count, following_count,
-                user_progress (hours, points, trend)
+                id, name, email, avatar, bio, followers_count, following_count, username, birth_date, gender,
+                user_progress (hours, points, trend, questions_count, accuracy)
             `)
             .eq('id', userId)
             .single();
 
         if (error) throw error;
-        const progress = data.user_progress || { hours: 0, points: 0, trend: 'neutral' };
+        const progress = data.user_progress || { hours: 0, points: 0, trend: 'neutral', questions_count: 0, accuracy: 0 };
         return { ...data, ...progress };
     },
 
@@ -736,6 +736,32 @@ export const api = {
 
         if (error) throw error;
         return { message: 'Points reset' };
+    },
+
+    async resetQuestionsCount() {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('Not authenticated');
+
+        const { error } = await supabase
+            .from('user_progress')
+            .update({ questions_count: 0 })
+            .eq('user_id', user.id);
+
+        if (error) throw error;
+        return { message: 'Questions reset' };
+    },
+
+    async resetAccuracy() {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('Not authenticated');
+
+        const { error } = await supabase
+            .from('user_progress')
+            .update({ accuracy: 0 })
+            .eq('user_id', user.id);
+
+        if (error) throw error;
+        return { message: 'Accuracy reset' };
     },
 
     // ----- ADMIN -----
