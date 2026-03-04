@@ -215,12 +215,24 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
     };
 
     const handleCreateQuiz = async () => {
-        if (!quizQuestion.trim() || quizOptions.some(o => !o.trim())) return;
+        // Filter out empty options
+        const validOptions = quizOptions.filter(o => o.trim() !== '');
+
+        // Find which index in the validOptions array corresponds to the original selected correct index
+        const originalCorrectText = quizOptions[quizCorrect]?.trim();
+
+        // Validation: Need at least 2 options and a valid correct one
+        if (!quizQuestion.trim() || validOptions.length < 2 || !originalCorrectText) {
+            alert('A pergunta deve ter pelo menos 2 alternativas preenchidas e a correta deve conter texto.');
+            return;
+        }
+
+        const newCorrectIndex = validOptions.findIndex(o => o.trim() === originalCorrectText);
 
         const quizData: QuizData = {
             question: quizQuestion,
-            options: [...quizOptions],
-            correctIndex: quizCorrect,
+            options: validOptions,
+            correctIndex: newCorrectIndex,
             points: 50,
             answeredBy: []
         };
@@ -334,12 +346,15 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
                             </div>
 
                             <div className="bg-blue-900/20 border border-blue-500/20 p-3 rounded-lg text-xs text-blue-200">
-                                <p>ℹ️ Você não poderá responder sua própria pergunta. Quem acertar ganha 50 pontos no ranking.</p>
+                                <p>ℹ️ Mínimo de 2 alternativas preenchidas. Campos vazios serão ignorados. Quem acertar ganha 50 pontos.</p>
                             </div>
 
                             <button
                                 onClick={handleCreateQuiz}
-                                className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+                                className={`w-full font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2 ${quizQuestion.trim() && quizOptions.filter(o => o.trim()).length >= 2
+                                        ? 'bg-green-600 hover:bg-green-500 text-white'
+                                        : 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                                    }`}
                             >
                                 <HelpCircle size={20} />
                                 Lançar Desafio
