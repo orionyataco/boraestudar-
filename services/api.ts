@@ -649,6 +649,16 @@ export const api = {
         return data.map((f: any) => f.users);
     },
 
+    async getFollowingCount(userId: string) {
+        const { count, error } = await supabase
+            .from('follows')
+            .select('*', { count: 'exact', head: true })
+            .eq('follower_id', userId);
+
+        if (error) throw error;
+        return count || 0;
+    },
+
     async followUser(userId) {
         const { data: { user } } = await supabase.auth.getUser();
 

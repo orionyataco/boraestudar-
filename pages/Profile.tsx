@@ -31,15 +31,29 @@ const CheckSquareIcon = (props: any) => (
     </svg>
 )
 
-const data = [
-    { name: 'Seg', hours: 2.5 },
-    { name: 'Ter', hours: 3.8 },
-    { name: 'Qua', hours: 4.2 },
-    { name: 'Qui', hours: 5.5 },
-    { name: 'Sex', hours: 4.8 },
-    { name: 'Sab', hours: 6.0 },
-    { name: 'Dom', hours: 3.0 },
-];
+const chartData: Record<string, { name: string, hours: number }[]> = {
+    weekly: [
+        { name: 'Seg', hours: 2.5 },
+        { name: 'Ter', hours: 3.8 },
+        { name: 'Qua', hours: 4.2 },
+        { name: 'Qui', hours: 5.5 },
+        { name: 'Sex', hours: 4.8 },
+        { name: 'Sab', hours: 6.0 },
+        { name: 'Dom', hours: 3.0 },
+    ],
+    monthly: [
+        { name: 'Semana 1', hours: 15.5 },
+        { name: 'Semana 2', hours: 18.2 },
+        { name: 'Semana 3', hours: 22.4 },
+        { name: 'Semana 4', hours: 16.8 },
+    ],
+    yearly: [
+        { name: 'Jan', hours: 45 }, { name: 'Fev', hours: 52 }, { name: 'Mar', hours: 48 },
+        { name: 'Abr', hours: 60 }, { name: 'Mai', hours: 55 }, { name: 'Jun', hours: 42 },
+        { name: 'Jul', hours: 38 }, { name: 'Ago', hours: 45 }, { name: 'Set', hours: 58 },
+        { name: 'Out', hours: 62 }, { name: 'Nov', hours: 65 }, { name: 'Dez', hours: 70 },
+    ]
+};
 
 interface ProfileProps {
     user: any; // Current logged in user
@@ -63,6 +77,7 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const [myId, setMyId] = useState<string | null>(null);
+    const [chartPeriod, setChartPeriod] = useState<'weekly' | 'monthly' | 'yearly'>('weekly');
 
     useEffect(() => {
         loadProfile();
@@ -81,7 +96,10 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
             const userData = await api.getUser(userId);
             setProfileUser(userData);
             setFollowersCount(userData.followers_count || 0);
-            setFollowingCount(userData.following_count || 0);
+
+            // Fetch actual following count as source of truth
+            const actualFollowing = await api.getFollowingCount(userId);
+            setFollowingCount(actualFollowing);
 
             if (viewingUserId && viewingUserId !== myId) {
                 const following = await api.isFollowing(viewingUserId);
@@ -185,6 +203,10 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
         if (confirm('Tem certeza que deseja ZERAR suas horas de estudo? Esta ação não pode ser desfeita.')) {
             try {
                 await api.resetStudyHours();
+                // Update local state for instant feedback
+                if (profileUser) {
+                    setProfileUser({ ...profileUser, hours: 0 });
+                }
                 onRefresh();
             } catch (error: any) {
                 alert(error.message);
@@ -196,6 +218,10 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
         if (confirm('Tem certeza que deseja ZERAR seus pontos de questões? Esta ação não pode ser desfeita.')) {
             try {
                 await api.resetPoints();
+                // Update local state for instant feedback
+                if (profileUser) {
+                    setProfileUser({ ...profileUser, points: 0 });
+                }
                 onRefresh();
             } catch (error: any) {
                 alert(error.message);
@@ -310,10 +336,23 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Chart */}
                 <div className="lg:col-span-2 bg-slate-800 p-6 rounded-2xl border border-slate-700">
-                    <h3 className="text-xl font-bold text-white mb-6">Progresso Semanal</h3>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                        <h3 className="text-xl font-bold text-white capitalize">Progresso {chartPeriod === 'weekly' ? 'Semanal' : chartPeriod === 'monthly' ? 'Mensal' : 'Anual'}</h3>
+                        <div className="flex bg-slate-900/50 p-1 rounded-lg border border-slate-700">
+                            {(['weekly', 'monthly', 'yearly'] as const).map((p) => (
+                                <button
+                                    key={p}
+                                    onClick={() => setChartPeriod(p)}
+                                    className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${chartPeriod === p ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-400 hover:text-white'}`}
+                                >
+                                    {p === 'weekly' ? 'Semana' : p === 'monthly' ? 'Mês' : 'Ano'}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                     <div className="h-64 w-full bg-slate-900/50 rounded-xl p-4 flex items-center justify-center">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={data}>
+                            <BarChart data={chartData[chartPeriod]}>
                                 <XAxis
                                     dataKey="name"
                                     stroke="#64748b"
@@ -327,8 +366,12 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
                                     cursor={{ fill: 'rgba(255,255,255,0.05)' }}
                                 />
                                 <Bar dataKey="hours" radius={[4, 4, 0, 0]}>
-                                    {data.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={index === 5 ? '#1d9bf0' : '#cbd5e1'} opacity={index === 5 ? 1 : 0.5} />
+                                    {chartData[chartPeriod].map((entry, index) => (
+                                        <Cell
+                                            key={`cell-${index}`}
+                                            fill={(chartPeriod === 'weekly' && index === 5) || (chartPeriod === 'monthly' && index === 2) || (chartPeriod === 'yearly' && index === 10) ? '#1d9bf0' : '#cbd5e1'}
+                                            opacity={((chartPeriod === 'weekly' && index === 5) || (chartPeriod === 'monthly' && index === 2) || (chartPeriod === 'yearly' && index === 10)) ? 1 : 0.5}
+                                        />
                                     ))}
                                 </Bar>
                             </BarChart>
