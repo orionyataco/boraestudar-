@@ -88,6 +88,7 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
                             displayText = parsed.text || '';
                             quizData = parsed.quiz;
                             fileName = parsed.fileName;
+                            (p as any).fileUrl = parsed.fileUrl;
                         }
                     } catch (e) {
                         // Not valid JSON or not our format, keep as text
@@ -104,6 +105,7 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
                     isMe: p.user_id === currentUserId,
                     type: displayType,
                     fileName,
+                    fileUrl: (p as any).fileUrl,
                     quiz: quizData,
                     userAnswer: p.userAnswer
                 };
@@ -196,15 +198,31 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
         if (!file) return;
 
         try {
-            // Create a rich message object
-            const messageContent = JSON.stringify({
-                type: 'file',
-                text: file.name,
-                fileName: file.name
-            });
+            const isImage = file.type.startsWith('image/');
 
-            await api.createGroupPost(activeChannel, messageContent);
-            await loadMessages(activeChannel);
+            if (isImage) {
+                const reader = new FileReader();
+                reader.onloadend = async () => {
+                    const base64 = reader.result as string;
+                    const messageContent = JSON.stringify({
+                        type: 'file',
+                        text: file.name,
+                        fileName: file.name,
+                        fileUrl: base64
+                    });
+                    await api.createGroupPost(activeChannel, messageContent);
+                    await loadMessages(activeChannel);
+                };
+                reader.readAsDataURL(file);
+            } else {
+                const messageContent = JSON.stringify({
+                    type: 'file',
+                    text: file.name,
+                    fileName: file.name
+                });
+                await api.createGroupPost(activeChannel, messageContent);
+                await loadMessages(activeChannel);
+            }
 
             // Reset input
             if (fileInputRef.current) fileInputRef.current.value = '';
@@ -474,15 +492,25 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
 
                                 {/* TYPE: FILE */}
                                 {msg.type === 'file' && (
-                                    <div className="bg-blue-600/20 border border-blue-600/40 p-3 rounded-lg flex items-center gap-3">
-                                        <div className="bg-blue-600 p-2 rounded">
-                                            <FileText size={20} className="text-white" />
+                                    msg.fileUrl && msg.fileUrl.startsWith('data:image') ? (
+                                        <div className="rounded-xl overflow-hidden border border-slate-700 max-w-sm">
+                                            <img src={msg.fileUrl} alt={msg.fileName} className="w-full h-auto max-h-96 object-cover" />
+                                            <div className="p-2 bg-slate-800/80 text-[10px] text-slate-400 flex justify-between items-center">
+                                                <span className="truncate mr-2">{msg.fileName}</span>
+                                                <a href={msg.fileUrl} download={msg.fileName} className="text-blue-400 hover:text-blue-300">Baixar</a>
+                                            </div>
                                         </div>
-                                        <div className="text-sm">
-                                            <p className="text-blue-300 font-medium">{msg.fileName}</p>
-                                            <p className="text-blue-400/60 text-xs">PDF • 2.4 MB</p>
+                                    ) : (
+                                        <div className="bg-blue-600/20 border border-blue-600/40 p-3 rounded-lg flex items-center gap-3">
+                                            <div className="bg-blue-600 p-2 rounded">
+                                                <FileText size={20} className="text-white" />
+                                            </div>
+                                            <div className="text-sm">
+                                                <p className="text-blue-300 font-medium">{msg.fileName}</p>
+                                                <p className="text-blue-400/60 text-xs">Arquivo</p>
+                                            </div>
                                         </div>
-                                    </div>
+                                    )
                                 )}
 
                                 {/* TYPE: QUIZ */}

@@ -45,6 +45,7 @@ export interface ChatMessage {
   isMe: boolean;
   type: 'text' | 'file' | 'system' | 'quiz';
   fileName?: string;
+  fileUrl?: string;
   quiz?: QuizData;
   userName?: string;
   userAvatar?: string;
