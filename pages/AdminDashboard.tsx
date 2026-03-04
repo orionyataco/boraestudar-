@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
     Shield, Users, FileText, Layers, Trash2,
-    ChevronRight, AlertTriangle, RefreshCw, UserCheck, UserX, Crown
+    ChevronRight, AlertTriangle, RefreshCw, UserCheck, UserX, Crown,
+    Lock, Globe
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -10,10 +11,11 @@ interface AdminDashboardProps {
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
-    const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'posts'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'posts' | 'groups'>('overview');
     const [stats, setStats] = useState({ totalUsers: 0, totalPosts: 0, totalGroups: 0 });
     const [users, setUsers] = useState<any[]>([]);
     const [posts, setPosts] = useState<any[]>([]);
+    const [groups, setGroups] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
 
@@ -29,29 +31,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
     }
 
     const loadStats = async () => {
-        try {
-            const s = await api.admin.getStats();
-            setStats(s);
-        } catch (e) { console.error(e); }
+        try { setStats(await api.admin.getStats()); } catch (e) { console.error(e); }
     };
 
     const loadUsers = async () => {
-        try {
-            const u = await api.admin.getAllUsers();
-            setUsers(u || []);
-        } catch (e) { console.error(e); }
+        try { setUsers(await api.admin.getAllUsers() || []); } catch (e) { console.error(e); }
     };
 
     const loadPosts = async () => {
-        try {
-            const p = await api.admin.getAllPosts();
-            setPosts(p || []);
-        } catch (e) { console.error(e); }
+        try { setPosts(await api.admin.getAllPosts() || []); } catch (e) { console.error(e); }
+    };
+
+    const loadGroups = async () => {
+        try { setGroups(await api.admin.getAllGroups() || []); } catch (e) { console.error(e); }
     };
 
     const loadAll = async () => {
         setLoading(true);
-        await Promise.all([loadStats(), loadUsers(), loadPosts()]);
+        await Promise.all([loadStats(), loadUsers(), loadPosts(), loadGroups()]);
         setLoading(false);
     };
 
@@ -63,9 +60,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
         try {
             await api.admin.deletePost(postId);
             setPosts(prev => prev.filter(p => p.id !== postId));
-        } catch (e: any) {
-            alert(e.message);
-        }
+        } catch (e: any) { alert(e.message); }
         setActionLoading(null);
     };
 
@@ -77,23 +72,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
             await api.admin.deleteUser(userId);
             setUsers(prev => prev.filter(u => u.id !== userId));
             await loadStats();
-        } catch (e: any) {
-            alert(e.message);
-        }
+        } catch (e: any) { alert(e.message); }
         setActionLoading(null);
     };
 
     const handleSetAdmin = async (userId: string, currentRole: string) => {
         const newRole = currentRole === 'admin' ? 'user' : 'admin';
-        const msg = newRole === 'admin' ? 'Promover a Admin?' : 'Remover permissão de Admin?';
-        if (!confirm(msg)) return;
+        if (!confirm(newRole === 'admin' ? 'Promover a Admin?' : 'Remover permissão de Admin?')) return;
         setActionLoading(userId + '-role');
         try {
             await api.admin.setUserRole(userId, newRole);
             setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
-        } catch (e: any) {
-            alert(e.message);
-        }
+        } catch (e: any) { alert(e.message); }
+        setActionLoading(null);
+    };
+
+    const handleDeleteGroup = async (groupId: string, groupName: string) => {
+        if (!confirm(`Tem certeza que deseja deletar o grupo "${groupName}" e todos os seus dados? Esta ação não pode ser desfeita.`)) return;
+        setActionLoading(groupId);
+        try {
+            await api.admin.deleteGroup(groupId);
+            setGroups(prev => prev.filter(g => g.id !== groupId));
+            await loadStats();
+        } catch (e: any) { alert(e.message); }
         setActionLoading(null);
     };
 
@@ -102,10 +103,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
         return new Date(dateStr).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
     };
 
+    const Spinner = () => (
+        <div className="flex justify-center py-8">
+            <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+    );
+
     const statCards = [
-        { label: 'Total de Usuários', value: stats.totalUsers, icon: Users, color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20' },
-        { label: 'Total de Posts', value: stats.totalPosts, icon: FileText, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
-        { label: 'Total de Grupos', value: stats.totalGroups, icon: Layers, color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/20' },
+        { label: 'Total de Usuários', value: stats.totalUsers, icon: Users, color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20', tab: 'users' },
+        { label: 'Total de Posts', value: stats.totalPosts, icon: FileText, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20', tab: 'posts' },
+        { label: 'Total de Grupos', value: stats.totalGroups, icon: Layers, color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/20', tab: 'groups' },
+    ];
+
+    const tabs = [
+        { id: 'overview', label: 'Visão Geral', icon: Shield },
+        { id: 'users', label: `Usuários (${users.length})`, icon: Users },
+        { id: 'posts', label: `Posts (${posts.length})`, icon: FileText },
+        { id: 'groups', label: `Grupos (${groups.length})`, icon: Layers },
     ];
 
     return (
@@ -119,7 +133,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
                     </div>
                     <div>
                         <h1 className="text-2xl font-bold text-white">Painel Administrativo</h1>
-                        <p className="text-slate-400 text-sm">Gerencie usuários, posts e conteúdo da plataforma</p>
+                        <p className="text-slate-400 text-sm">Gerencie usuários, posts e grupos da plataforma</p>
                     </div>
                 </div>
                 <button
@@ -135,7 +149,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {statCards.map((card, i) => (
-                    <div key={i} className={`p-6 rounded-2xl border ${card.bg} flex items-center gap-4`}>
+                    <button
+                        key={i}
+                        onClick={() => setActiveTab(card.tab as any)}
+                        className={`p-6 rounded-2xl border ${card.bg} flex items-center gap-4 hover:brightness-110 transition-all text-left w-full`}
+                    >
                         <div className={`p-3 rounded-xl ${card.bg}`}>
                             <card.icon size={22} className={card.color} />
                         </div>
@@ -143,22 +161,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
                             <p className="text-slate-400 text-sm">{card.label}</p>
                             <p className="text-3xl font-bold text-white">{loading ? '—' : card.value}</p>
                         </div>
-                    </div>
+                    </button>
                 ))}
             </div>
 
             {/* Tabs */}
             <div className="bg-slate-800/50 rounded-2xl border border-slate-700 overflow-hidden">
-                <div className="flex border-b border-slate-700">
-                    {[
-                        { id: 'overview', label: 'Visão Geral', icon: Shield },
-                        { id: 'users', label: `Usuários (${users.length})`, icon: Users },
-                        { id: 'posts', label: `Posts (${posts.length})`, icon: FileText },
-                    ].map(tab => (
+                <div className="flex border-b border-slate-700 overflow-x-auto">
+                    {tabs.map(tab => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id as any)}
-                            className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-colors border-b-2 ${activeTab === tab.id
+                            className={`flex items-center gap-2 px-5 py-4 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${activeTab === tab.id
                                 ? 'text-blue-400 border-blue-500 bg-blue-500/5'
                                 : 'text-slate-400 border-transparent hover:text-white'
                                 }`}
@@ -170,24 +184,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
                 </div>
 
                 <div className="p-6">
+
                     {/* OVERVIEW TAB */}
                     {activeTab === 'overview' && (
                         <div className="space-y-4">
                             <h3 className="text-lg font-semibold text-white mb-4">Últimos Usuários Cadastrados</h3>
-                            {loading ? (
-                                <div className="flex justify-center py-8">
-                                    <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                                </div>
-                            ) : (
+                            {loading ? <Spinner /> : (
                                 <div className="space-y-2">
                                     {users.slice(0, 5).map(u => (
                                         <div key={u.id} className="flex items-center justify-between p-3 bg-slate-900/50 rounded-xl">
                                             <div className="flex items-center gap-3">
-                                                <img
-                                                    src={u.avatar && !u.avatar.startsWith('blob:') ? u.avatar : `https://picsum.photos/seed/${u.id}/100/100`}
-                                                    className="w-8 h-8 rounded-full object-cover border border-slate-700"
-                                                    alt={u.name}
-                                                />
+                                                <img src={u.avatar && !u.avatar.startsWith('blob:') ? u.avatar : `https://picsum.photos/seed/${u.id}/100/100`} className="w-8 h-8 rounded-full object-cover border border-slate-700" alt={u.name} />
                                                 <div>
                                                     <p className="text-sm font-medium text-white flex items-center gap-1">
                                                         {u.name}
@@ -200,10 +207,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
                                         </div>
                                     ))}
                                     {users.length > 5 && (
-                                        <button
-                                            onClick={() => setActiveTab('users')}
-                                            className="w-full text-center text-sm text-blue-400 hover:text-blue-300 py-2 flex items-center justify-center gap-1"
-                                        >
+                                        <button onClick={() => setActiveTab('users')} className="w-full text-center text-sm text-blue-400 hover:text-blue-300 py-2 flex items-center justify-center gap-1">
                                             Ver todos os {users.length} usuários <ChevronRight size={14} />
                                         </button>
                                     )}
@@ -216,20 +220,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
                     {activeTab === 'users' && (
                         <div>
                             <h3 className="text-lg font-semibold text-white mb-4">Todos os Usuários</h3>
-                            {loading ? (
-                                <div className="flex justify-center py-8">
-                                    <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                                </div>
-                            ) : (
+                            {loading ? <Spinner /> : (
                                 <div className="space-y-2">
                                     {users.map(u => (
                                         <div key={u.id} className="flex items-center justify-between p-4 bg-slate-900/50 rounded-xl border border-slate-700/50 hover:border-slate-600 transition-colors group">
                                             <div className="flex items-center gap-3">
-                                                <img
-                                                    src={u.avatar && !u.avatar.startsWith('blob:') ? u.avatar : `https://picsum.photos/seed/${u.id}/100/100`}
-                                                    className="w-10 h-10 rounded-full object-cover border border-slate-700"
-                                                    alt={u.name}
-                                                />
+                                                <img src={u.avatar && !u.avatar.startsWith('blob:') ? u.avatar : `https://picsum.photos/seed/${u.id}/100/100`} className="w-10 h-10 rounded-full object-cover border border-slate-700" alt={u.name} />
                                                 <div>
                                                     <p className="text-sm font-semibold text-white flex items-center gap-1.5">
                                                         {u.name}
@@ -243,27 +239,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                {u.id !== currentUser?.id && (
+                                                {u.id !== currentUser?.id ? (
                                                     <>
-                                                        <button
-                                                            onClick={() => handleSetAdmin(u.id, u.role)}
-                                                            disabled={actionLoading === u.id + '-role'}
-                                                            title={u.role === 'admin' ? 'Remover Admin' : 'Tornar Admin'}
-                                                            className="p-2 rounded-lg text-slate-400 hover:text-yellow-400 hover:bg-yellow-500/10 transition-colors"
-                                                        >
+                                                        <button onClick={() => handleSetAdmin(u.id, u.role)} disabled={actionLoading === u.id + '-role'} title={u.role === 'admin' ? 'Remover Admin' : 'Tornar Admin'} className="p-2 rounded-lg text-slate-400 hover:text-yellow-400 hover:bg-yellow-500/10 transition-colors">
                                                             {u.role === 'admin' ? <UserX size={16} /> : <UserCheck size={16} />}
                                                         </button>
-                                                        <button
-                                                            onClick={() => handleDeleteUser(u.id, u.name)}
-                                                            disabled={actionLoading === u.id}
-                                                            title="Remover usuário"
-                                                            className="p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                                                        >
+                                                        <button onClick={() => handleDeleteUser(u.id, u.name)} disabled={actionLoading === u.id} title="Remover usuário" className="p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors">
                                                             <Trash2 size={16} />
                                                         </button>
                                                     </>
-                                                )}
-                                                {u.id === currentUser?.id && (
+                                                ) : (
                                                     <span className="text-xs text-slate-600 italic">Você</span>
                                                 )}
                                             </div>
@@ -279,21 +264,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
                     {activeTab === 'posts' && (
                         <div>
                             <h3 className="text-lg font-semibold text-white mb-4">Todos os Posts</h3>
-                            {loading ? (
-                                <div className="flex justify-center py-8">
-                                    <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                                </div>
-                            ) : (
+                            {loading ? <Spinner /> : (
                                 <div className="space-y-3">
                                     {posts.map(p => (
                                         <div key={p.id} className="p-4 bg-slate-900/50 rounded-xl border border-slate-700/50 hover:border-slate-600 transition-colors group">
                                             <div className="flex items-start justify-between gap-4">
                                                 <div className="flex items-start gap-3 flex-1 min-w-0">
-                                                    <img
-                                                        src={p.user?.avatar && !p.user.avatar.startsWith('blob:') ? p.user.avatar : `https://picsum.photos/seed/${p.user?.id}/100/100`}
-                                                        className="w-8 h-8 rounded-full object-cover border border-slate-700 flex-shrink-0 mt-0.5"
-                                                        alt={p.user?.name}
-                                                    />
+                                                    <img src={p.user?.avatar && !p.user.avatar.startsWith('blob:') ? p.user.avatar : `https://picsum.photos/seed/${p.user?.id}/100/100`} className="w-8 h-8 rounded-full object-cover border border-slate-700 flex-shrink-0 mt-0.5" alt={p.user?.name} />
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2 mb-1">
                                                             <span className="text-sm font-medium text-white">{p.user?.name}</span>
@@ -301,21 +278,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
                                                             <span className="text-xs text-slate-500">{formatDate(p.created_at)}</span>
                                                         </div>
                                                         <p className="text-sm text-slate-300 line-clamp-2 break-words">
-                                                            {p.content?.startsWith('{')
-                                                                ? '[Conteúdo especial]'
-                                                                : p.content}
+                                                            {p.content?.startsWith('{') ? '[Conteúdo especial]' : p.content}
                                                         </p>
                                                     </div>
                                                 </div>
-                                                <button
-                                                    onClick={() => handleDeletePost(p.id)}
-                                                    disabled={actionLoading === p.id}
-                                                    title="Deletar post"
-                                                    className="flex-shrink-0 p-2 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
-                                                >
-                                                    {actionLoading === p.id
-                                                        ? <RefreshCw size={16} className="animate-spin" />
-                                                        : <Trash2 size={16} />}
+                                                <button onClick={() => handleDeletePost(p.id)} disabled={actionLoading === p.id} title="Deletar post" className="flex-shrink-0 p-2 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100">
+                                                    {actionLoading === p.id ? <RefreshCw size={16} className="animate-spin" /> : <Trash2 size={16} />}
                                                 </button>
                                             </div>
                                         </div>
@@ -325,6 +293,57 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
                             )}
                         </div>
                     )}
+
+                    {/* GROUPS TAB */}
+                    {activeTab === 'groups' && (
+                        <div>
+                            <h3 className="text-lg font-semibold text-white mb-4">Todos os Grupos</h3>
+                            {loading ? <Spinner /> : (
+                                <div className="space-y-3">
+                                    {groups.map(g => (
+                                        <div key={g.id} className="flex items-center justify-between p-4 bg-slate-900/50 rounded-xl border border-slate-700/50 hover:border-slate-600 transition-colors group">
+                                            <div className="flex items-center gap-3">
+                                                {g.image ? (
+                                                    <img src={g.image} className="w-10 h-10 rounded-xl object-cover border border-slate-700" alt={g.name} />
+                                                ) : (
+                                                    <div className="w-10 h-10 rounded-xl bg-slate-700 flex items-center justify-center">
+                                                        <Layers size={18} className="text-slate-400" />
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <p className="text-sm font-semibold text-white flex items-center gap-1.5">
+                                                        {g.name}
+                                                        {g.is_private ? (
+                                                            <span className="text-xs bg-slate-700 text-slate-400 px-1.5 py-0.5 rounded-md font-medium flex items-center gap-1">
+                                                                <Lock size={10} /> Privado
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-xs bg-green-500/10 text-green-400 px-1.5 py-0.5 rounded-md font-medium flex items-center gap-1">
+                                                                <Globe size={10} /> Público
+                                                            </span>
+                                                        )}
+                                                    </p>
+                                                    <p className="text-xs text-slate-500">
+                                                        Criador: {g.creator_name || '—'} · {g.member_count} membros · {formatDate(g.created_at)}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => handleDeleteGroup(g.id, g.name)}
+                                                disabled={actionLoading === g.id}
+                                                title="Deletar grupo"
+                                                className="p-2 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                                            >
+                                                {actionLoading === g.id ? <RefreshCw size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {groups.length === 0 && <p className="text-center text-slate-500 py-8">Nenhum grupo encontrado.</p>}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                 </div>
             </div>
         </div>

@@ -762,5 +762,28 @@ export const api = {
             if (error) throw error;
             return { message: 'Role atualizada' };
         },
+
+        async getAllGroups() {
+            const { data, error } = await supabase
+                .from('groups')
+                .select(`
+                    id, name, description, image, is_private, created_at,
+                    users!groups_creator_id_fkey (id, name),
+                    group_members (count)
+                `)
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            return (data || []).map((g: any) => ({
+                ...g,
+                creator_name: g.users?.name,
+                member_count: g.group_members?.[0]?.count || 0,
+            }));
+        },
+
+        async deleteGroup(groupId: string) {
+            const { error } = await supabase.from('groups').delete().eq('id', groupId);
+            if (error) throw error;
+            return { message: 'Grupo deletado' };
+        },
     },
 };
