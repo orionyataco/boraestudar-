@@ -352,8 +352,8 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
                             <button
                                 onClick={handleCreateQuiz}
                                 className={`w-full font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2 ${quizQuestion.trim() && quizOptions.filter(o => o.trim()).length >= 2
-                                        ? 'bg-green-600 hover:bg-green-500 text-white'
-                                        : 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                                    ? 'bg-green-600 hover:bg-green-500 text-white'
+                                    : 'bg-slate-700 text-slate-400 cursor-not-allowed'
                                     }`}
                             >
                                 <HelpCircle size={20} />
@@ -558,7 +558,7 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
                                 )}
                             </div>
 
-                            {msg.isMe && (
+                            {(msg.isMe || user?.role === 'admin' || isGroupCreator) && (
                                 <button
                                     onClick={() => handleDeletePost(msg.id)}
                                     className="opacity-0 group-hover:opacity-100 p-2 text-slate-500 hover:text-red-500 transition-all rounded-full hover:bg-slate-800/50 self-start"
