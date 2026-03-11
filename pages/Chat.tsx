@@ -550,8 +550,8 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
                                                 return (
                                                     <button
                                                         key={idx}
-                                                        disabled={iAnswered || msg.isMe || answeringQuizId === msg.id}
-                                                        onClick={() => !msg.isMe && handleAnswerQuiz(msg.id, idx)}
+                                                        disabled={iAnswered || answeringQuizId === msg.id}
+                                                        onClick={() => handleAnswerQuiz(msg.id, idx)}
                                                         className={`w-full text-left p-3.5 rounded-xl border transition-all duration-300 flex items-center justify-between group ${btnClass}`}
                                                     >
                                                         <span className="flex-1">{opt}</span>
@@ -567,7 +567,7 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
                                                 : 'bg-red-500/20 text-red-400 border border-red-500/30'
                                                 }`}>
                                                 {msg.userAnswer?.isCorrect
-                                                    ? `🎉 Parabéns! Você ganhou +${msg.quiz.points} pontos!`
+                                                    ? `🎉 Parabéns! Você ganhou +${msg.quiz.points} ${msg.quiz.points === 1 ? 'ponto' : 'pontos'}!`
                                                     : '❌ Resposta incorreta. Tente na próxima!'}
                                             </div>
                                         )}
