@@ -85,6 +85,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onUpdateHours, user, onNav
 
   // Study Session State
   const [sessionState, setSessionState] = useState<'idle' | 'studying' | 'review'>('idle');
+  const [isPublishing, setIsPublishing] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [subject, setSubject] = useState('');
@@ -169,6 +170,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onUpdateHours, user, onNav
   };
 
   const handlePublish = async () => {
+    if (isPublishing) return;
+    setIsPublishing(true);
     try {
       const content = `📚 ${subject}\n\n${description}\n\n⏱️ Tempo de estudo: ${formatTime(seconds)}`;
 
@@ -204,6 +207,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onUpdateHours, user, onNav
       await loadPosts();
     } catch (error: any) {
       alert(error.message);
+    } finally {
+      setIsPublishing(false);
     }
   };
 
@@ -478,10 +483,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onUpdateHours, user, onNav
                 </button>
                 <button
                   onClick={handlePublish}
-                  className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-900/20"
+                  disabled={isPublishing}
+                  className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-900/20 transition-all"
                 >
                   <Send size={18} />
-                  Publicar
+                  {isPublishing ? 'Publicando...' : 'Publicar'}
                 </button>
               </div>
             </div>

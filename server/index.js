@@ -91,7 +91,9 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/users/me', authenticateToken, (req, res) => {
     try {
         const stmt = db.prepare(`
-            SELECT u.id, u.name, u.email, u.avatar, u.bio, u.followers_count, u.following_count, p.hours, p.points, p.trend 
+            SELECT u.id, u.name, u.email, u.avatar, u.bio, u.followers_count, u.following_count, u.role, 
+                   u.username, u.birth_date, u.gender,
+                   p.hours, p.points, p.questions_count, p.accuracy, p.trend 
             FROM users u 
             JOIN user_progress p ON u.id = p.user_id 
             WHERE u.id = ?
@@ -148,6 +150,46 @@ app.post('/api/users/progress', authenticateToken, (req, res) => {
     }
 });
 
+app.post('/api/users/progress/reset-hours', authenticateToken, (req, res) => {
+    try {
+        db.prepare('UPDATE user_progress SET hours = 0 WHERE user_id = ?').run(req.user.id);
+        res.json({ message: 'Study hours reset' });
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
+    }
+});
+
+app.post('/api/users/progress/reset-points', authenticateToken, (req, res) => {
+    try {
+        db.prepare('UPDATE user_progress SET points = 0 WHERE user_id = ?').run(req.user.id);
+        res.json({ message: 'Points reset' });
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
+    }
+});
+
+app.post('/api/users/progress/reset-questions', authenticateToken, (req, res) => {
+    try {
+        db.prepare('UPDATE user_progress SET questions_count = 0 WHERE user_id = ?').run(req.user.id);
+        res.json({ message: 'Questions count reset' });
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
+    }
+});
+
+app.post('/api/users/progress/reset-accuracy', authenticateToken, (req, res) => {
+    try {
+        db.prepare('UPDATE user_progress SET accuracy = 0 WHERE user_id = ?').run(req.user.id);
+        res.json({ message: 'Accuracy reset' });
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
+    }
+});
+
 // --- POSTS ROUTES ---
 
 app.post('/api/posts', authenticateToken, (req, res) => {
@@ -171,7 +213,9 @@ app.post('/api/posts', authenticateToken, (req, res) => {
 app.get('/api/posts', (req, res) => {
     try {
         const stmt = db.prepare(`
-            SELECT p.id, p.content, p.image_start, p.image_end, p.created_at, u.id as user_id, u.name, u.avatar
+            SELECT p.id, p.content, p.image_start, p.image_end, p.created_at, u.id as user_id, u.name, u.avatar,
+                   (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) as likes_count,
+                   (SELECT COUNT(*) FROM post_comments pc WHERE pc.post_id = p.id) as comments_count
             FROM posts p
             JOIN users u ON p.user_id = u.id
             ORDER BY p.created_at DESC
@@ -179,14 +223,33 @@ app.get('/api/posts', (req, res) => {
         `);
         const posts = stmt.all();
 
-        const formatted = posts.map(p => ({
-            id: p.id,
-            content: p.content,
-            imageStart: p.image_start,
-            imageEnd: p.image_end,
-            createdAt: p.created_at,
-            user: { id: p.user_id, name: p.name, avatar: p.avatar }
-        }));
+        const commentsStmt = db.prepare(`
+            SELECT c.id, c.post_id, c.content, c.created_at, u.id as user_id, u.name, u.avatar
+            FROM post_comments c
+            JOIN users u ON c.user_id = u.id
+            WHERE c.post_id = ?
+            ORDER BY c.created_at ASC
+        `);
+
+        const formatted = posts.map(p => {
+            const comments = commentsStmt.all(p.id);
+            return {
+                id: p.id,
+                content: p.content,
+                imageStart: p.image_start,
+                imageEnd: p.image_end,
+                created_at: p.created_at,
+                likes: p.likes_count || 0,
+                comments: p.comments_count || 0,
+                commentsList: comments.map(c => ({
+                    id: c.id,
+                    text: c.content,
+                    timestamp: c.created_at,
+                    user: { id: c.user_id, name: c.name, avatar: c.avatar }
+                })),
+                user: { id: p.user_id, name: p.name, avatar: p.avatar }
+            };
+        });
 
         res.json(formatted);
     } catch (error) {
@@ -395,11 +458,16 @@ app.get('/api/groups/:id', authenticateToken, (req, res) => {
 
 app.post('/api/groups/:id/join', authenticateToken, (req, res) => {
     try {
-        // If private, cannot join directly unless already invited (but here we assume join via button is for public)
         const groupStmt = db.prepare('SELECT is_private FROM groups WHERE id = ?');
         const group = groupStmt.get(req.params.id);
 
         if (!group) return res.status(404).json({ message: 'Group not found' });
+
+        // Check if already a member — if so, just return success (no error)
+        const existingMember = db.prepare('SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?').get(req.params.id, req.user.id);
+        if (existingMember) {
+            return res.json({ message: 'Already a member' });
+        }
 
         if (group.is_private) {
             return res.status(403).json({ message: 'Cannot join private group directly. Use invite link.' });
@@ -409,9 +477,6 @@ app.post('/api/groups/:id/join', authenticateToken, (req, res) => {
         stmt.run(req.params.id, req.user.id);
         res.json({ message: 'Joined group' });
     } catch (error) {
-        if (error.code === 'SQLITE_CONSTRAINT') {
-            return res.status(400).json({ message: 'Already a member' });
-        }
         console.error(error);
         res.sendStatus(500);
     }
@@ -566,15 +631,19 @@ app.delete('/api/groups/:id/members/:userId', authenticateToken, (req, res) => {
 // --- PROFILE & ACCOUNT MANAGEMENT ---
 
 app.put('/api/users/profile', authenticateToken, (req, res) => {
-    const { name, bio, avatar } = req.body;
+    const { name, bio, avatar, username, birth_date, gender } = req.body;
+
+    if (!name || !name.trim()) {
+        return res.status(400).json({ message: 'Nome é obrigatório' });
+    }
 
     try {
-        const stmt = db.prepare('UPDATE users SET name = ?, bio = ?, avatar = ? WHERE id = ?');
-        stmt.run(name, bio, avatar, req.user.id);
+        const stmt = db.prepare('UPDATE users SET name = ?, bio = ?, avatar = ?, username = ?, birth_date = ?, gender = ? WHERE id = ?');
+        stmt.run(name.trim(), bio || '', avatar || null, username || null, birth_date || null, gender || null, req.user.id);
         res.json({ message: 'Profile updated' });
     } catch (error) {
-        console.error(error);
-        res.sendStatus(500);
+        console.error('Error updating profile:', error);
+        res.status(500).json({ message: 'Erro interno ao salvar perfil: ' + error.message });
     }
 });
 
@@ -1081,6 +1150,92 @@ app.post('/api/groups/:groupId/posts/:postId/answer', authenticateToken, (req, r
 
 
 // Search groups
+// --- ADMIN ROUTES ---
+
+app.get('/api/admin/stats', authenticateToken, (req, res) => {
+    try {
+        const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+        const postCount = db.prepare('SELECT COUNT(*) as count FROM posts').get().count;
+        const groupCount = db.prepare('SELECT COUNT(*) as count FROM groups').get().count;
+
+        // Roughly estimate "online" as users seen in last 10 mins
+        const tenMinsAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+        const onlineCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE last_seen > ?').get(tenMinsAgo).count;
+
+        res.json({
+            totalUsers: userCount,
+            totalPosts: postCount,
+            totalGroups: groupCount,
+            onlineUsers: onlineCount || 0
+        });
+    } catch (e) {
+        console.error(e);
+        res.sendStatus(500);
+    }
+});
+
+app.get('/api/admin/users', authenticateToken, (req, res) => {
+    try {
+        const users = db.prepare(`
+            SELECT u.*, p.points, p.hours 
+            FROM users u 
+            JOIN user_progress p ON u.id = p.user_id 
+            ORDER BY u.created_at DESC
+        `).all();
+        res.json(users);
+    } catch (e) {
+        console.error(e);
+        res.sendStatus(500);
+    }
+});
+
+app.get('/api/admin/groups', authenticateToken, (req, res) => {
+    try {
+        const groups = db.prepare(`
+            SELECT g.*, u.name as creator_name, COUNT(gm.user_id) as member_count
+            FROM groups g
+            JOIN users u ON g.creator_id = u.id
+            LEFT JOIN group_members gm ON g.id = gm.group_id
+            GROUP BY g.id
+            ORDER BY g.created_at DESC
+        `).all();
+        res.json(groups);
+    } catch (e) {
+        console.error(e);
+        res.sendStatus(500);
+    }
+});
+
+app.put('/api/users/:id/role', authenticateToken, (req, res) => {
+    const { role } = req.body;
+    try {
+        // Only admin can set roles
+        const adminCheck = db.prepare('SELECT role FROM users WHERE id = ?').get(req.user.id);
+        if (adminCheck?.role !== 'admin') return res.sendStatus(403);
+
+        db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, req.params.id);
+        res.json({ message: 'Role updated' });
+    } catch (e) {
+        console.error(e);
+        res.sendStatus(500);
+    }
+});
+
+app.delete('/api/users/:id', authenticateToken, (req, res) => {
+    try {
+        // Only admin can delete other users
+        const adminCheck = db.prepare('SELECT role FROM users WHERE id = ?').get(req.user.id);
+        if (adminCheck?.role !== 'admin') return res.sendStatus(403);
+        if (req.params.id === req.user.id) return res.status(400).json({ message: 'Cannot delete self' });
+
+        db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+        res.json({ message: 'User deleted' });
+    } catch (e) {
+        console.error(e);
+        res.sendStatus(500);
+    }
+});
+
 app.get('/api/search/users', (req, res) => {
     const { q } = req.query;
 

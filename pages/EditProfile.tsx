@@ -26,6 +26,19 @@ export const EditProfile: React.FC<EditProfileProps> = ({ user, onSave, onCancel
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
+    useEffect(() => {
+        if (user) {
+            setFormData({
+                name: user.name || '',
+                bio: user.bio || '',
+                avatar: user.avatar || 'https://picsum.photos/id/64/200/200',
+                username: user.username || '',
+                birthDate: user.birth_date || '',
+                gender: user.gender || '',
+            });
+        }
+    }, [user]);
+
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {

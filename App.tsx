@@ -13,49 +13,31 @@ import { AccountSettings } from './pages/AccountSettings';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { Page, RankingUser } from './types';
 import { Bell, Settings as SettingsIcon, Rocket, Menu } from 'lucide-react';
-import { supabase } from './services/supabaseClient';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>(Page.DASHBOARD);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-  // Shared state for Rankings to allow Chat updates
+  const [viewingUserId, setViewingUserId] = useState<string | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [rankingUsers, setRankingUsers] = useState<RankingUser[]>([]);
 
   useEffect(() => {
-    // Verificar sessão existente ao carregar
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        api.getMe().then(user => {
-          setCurrentUser(user);
-          setCurrentPage(Page.DASHBOARD);
-        }).catch(() => {
-          setCurrentPage(Page.LOGIN);
-        }).finally(() => {
-          setIsLoadingSession(false);
-        });
-      } else {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      api.getMe().then(user => {
+        setCurrentUser(user);
+        setIsLoadingSession(false);
+      }).catch(() => {
+        localStorage.removeItem('auth_token');
         setCurrentPage(Page.LOGIN);
         setIsLoadingSession(false);
-      }
-    });
-
-    // Escutar mudanças de autenticação (login/logout)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
-        api.getMe().then(user => {
-          setCurrentUser(user);
-          setCurrentPage(prev => prev === Page.LOGIN ? Page.DASHBOARD : prev);
-        });
-      } else {
-        setCurrentUser(null);
-        setCurrentPage(Page.LOGIN);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+      });
+    } else {
+      setCurrentPage(Page.LOGIN);
+      setIsLoadingSession(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -66,28 +48,11 @@ const App: React.FC = () => {
     }
   }, [currentPage]);
 
-  // Helper to re-calculate ranks based on points (default sort)
-  const recalculateRanks = (users: RankingUser[]) => {
-    // Sort by points descending for internal rank tracking
-    const sorted = [...users].sort((a, b) => b.points - a.points);
-    return users.map(u => {
-      const newRank = sorted.findIndex(s => s.user.id === u.user.id) + 1;
-      // Determine trend based on previous rank vs new rank
-      let trend: 'up' | 'down' | 'neutral' = 'neutral';
-      if (newRank < u.rank) trend = 'up';
-      else if (newRank > u.rank) trend = 'down';
-
-      return { ...u, rank: newRank, trend };
-    });
-  };
-
   const handleUpdateScore = async (points: number) => {
     try {
       await api.updateProgress(0, points);
-      // Refresh rankings
       const data = await api.getRankings();
       setRankingUsers(data);
-      // Refresh user data
       const user = await api.getMe();
       setCurrentUser(user);
     } catch (e) {
@@ -98,19 +63,14 @@ const App: React.FC = () => {
   const handleUpdateHours = async (hours: number) => {
     try {
       await api.updateProgress(hours, 0);
-      // Refresh rankings
       const data = await api.getRankings();
       setRankingUsers(data);
-      // Refresh user data
       const user = await api.getMe();
       setCurrentUser(user);
     } catch (e) {
       console.error(e);
     }
   };
-
-  const [viewingUserId, setViewingUserId] = useState<string | null>(null);
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
 
   const handleNavigateToProfile = (userId: string) => {
     setViewingUserId(userId);
@@ -119,19 +79,13 @@ const App: React.FC = () => {
 
   const handlePageChange = (page: Page, options?: { groupId?: string; userId?: string | null }) => {
     if (options?.groupId) setSelectedGroupId(options.groupId);
-
-    // Explicitly set viewingUserId. If not provided, it depends on the page.
-    // If navigating to PROFILE via handlePageChange (e.g. Sidebar click), we reset it to null (me).
-    // If it's a specific profile navigation, options.userId will be present.
     if (options && options.userId !== undefined) {
       setViewingUserId(options.userId);
     } else if (page === Page.PROFILE) {
       setViewingUserId(null);
     } else if (page !== Page.EDIT_PROFILE && page !== Page.SETTINGS) {
-      // Optional: reset on other pages too if desired, but PROFILE is the critical one.
       setViewingUserId(null);
     }
-
     setCurrentPage(page);
   };
 
@@ -146,12 +100,13 @@ const App: React.FC = () => {
             viewingUserId={viewingUserId}
             onEditProfile={() => setCurrentPage(Page.EDIT_PROFILE)}
             onNavigateToProfile={handleNavigateToProfile}
+            onRefresh={() => {
+              api.getMe().then(user => setCurrentUser(user));
+            }}
           />
         );
-
       case Page.EDIT_PROFILE:
         return <EditProfile user={currentUser} onSave={() => {
-          // Refresh user data after save
           api.getMe().then(user => {
             setCurrentUser(user);
             setCurrentPage(Page.PROFILE);
@@ -164,19 +119,13 @@ const App: React.FC = () => {
       case Page.CHAT:
         return <Chat onUpdateScore={handleUpdateScore} user={currentUser} initialGroupId={selectedGroupId ?? undefined} onBack={() => setCurrentPage(Page.GROUPS)} />;
       case Page.GROUPS:
-        return <Groups onNavigate={(page, groupId) => {
-          handlePageChange(page as Page, { groupId });
-        }} />;
+        return <Groups onNavigate={(page, groupId) => handlePageChange(page as Page, { groupId })} />;
       case Page.RANKING:
         return <Rankings users={rankingUsers} onNavigateToProfile={handleNavigateToProfile} />;
       case Page.SETTINGS:
-        return <Settings onNavigate={(page) => {
-          handlePageChange(page as Page);
-        }} />;
+        return <Settings onNavigate={(page) => handlePageChange(page as Page)} />;
       case Page.ACCOUNT_SETTINGS:
-        return <AccountSettings onAccountDeleted={() => {
-          setCurrentPage(Page.LOGIN);
-        }} />;
+        return <AccountSettings onAccountDeleted={() => setCurrentPage(Page.LOGIN)} />;
       case Page.ADMIN:
         return <AdminDashboard currentUser={currentUser} />;
       default:
@@ -190,13 +139,10 @@ const App: React.FC = () => {
       case Page.PROFILE: return 'Meu Perfil';
       case Page.EDIT_PROFILE: return 'Editar Perfil';
       case Page.SETTINGS: return 'Configurações';
-      case Page.CHAT: return ''; // Chat has its own header
-      case Page.RANKING: return ''; // Ranking has its own header
       default: return 'BoraEstudar!';
     }
   };
 
-  // Mostrar tela de loading enquanto verifica a sessão
   if (isLoadingSession) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-900">
@@ -223,8 +169,9 @@ const App: React.FC = () => {
         currentPage={currentPage}
         setPage={handlePageChange}
         currentUser={currentUser}
-        onLogout={async () => {
-          await supabase.auth.signOut();
+        onLogout={() => {
+          localStorage.removeItem('auth_token');
+          setCurrentUser(null);
           setCurrentPage(Page.LOGIN);
         }}
         isMobileMenuOpen={isMobileMenuOpen}
@@ -232,24 +179,20 @@ const App: React.FC = () => {
       />
 
       <main className="flex-1 md:ml-64 relative">
-        {/* Mobile Header - Show on all pages except Dashboard which has its own */}
         {currentPage !== Page.DASHBOARD && currentPage !== Page.CHAT && (
           <div className="h-16 border-b border-slate-800 flex items-center justify-between px-4 md:px-8 bg-slate-900/90 backdrop-blur sticky top-0 z-40 md:hidden">
             <div className="flex items-center gap-2">
-              {/* Mobile Menu Button */}
               <button
                 onClick={() => setIsMobileMenuOpen(true)}
                 className="text-slate-400 hover:text-white p-2 -ml-2 rounded-lg hover:bg-slate-800 transition-colors"
               >
                 <Menu size={24} />
               </button>
-
               <div className="w-6 h-6 rounded bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center">
                 <Rocket size={14} className="text-white transform -rotate-12" fill="currentColor" />
               </div>
               <span className="font-bold text-white tracking-tight">{getHeaderTitle()}</span>
             </div>
-
             <img
               src={currentUser?.avatar && !currentUser.avatar.startsWith('blob:') ? currentUser.avatar : "https://picsum.photos/id/64/100/100"}
               className="w-8 h-8 rounded-full border border-slate-600 cursor-pointer"
@@ -259,31 +202,27 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Top Bar - only show on Dashboard for this mockup style */}
         {currentPage === Page.DASHBOARD && (
           <div className="h-16 border-b border-slate-800 flex items-center justify-between px-4 md:px-8 bg-slate-900/90 backdrop-blur sticky top-0 z-40">
             <div className="flex items-center gap-2">
-              {/* Mobile Menu Button */}
               <button
                 onClick={() => setIsMobileMenuOpen(true)}
                 className="md:hidden text-slate-400 hover:text-white p-2 -ml-2 rounded-lg hover:bg-slate-800 transition-colors"
               >
                 <Menu size={24} />
               </button>
-
               <div className="w-6 h-6 rounded bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center">
                 <Rocket size={14} className="text-white transform -rotate-12" fill="currentColor" />
               </div>
               <span className="font-bold text-white tracking-tight">{getHeaderTitle()}</span>
             </div>
-
             <div className="flex items-center gap-3 md:gap-6 text-sm font-medium text-slate-400">
               <button className="relative hover:text-white hidden sm:block">
                 <Bell size={20} />
                 <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></span>
               </button>
               <button
-                onClick={() => setCurrentPage(Page.SETTINGS)}
+                onClick={() => handlePageChange(Page.SETTINGS)}
                 className="hover:text-white hidden sm:block"
               >
                 <SettingsIcon size={20} />
@@ -292,7 +231,7 @@ const App: React.FC = () => {
                 src={currentUser?.avatar && !currentUser.avatar.startsWith('blob:') ? currentUser.avatar : "https://picsum.photos/id/64/100/100"}
                 className="w-8 h-8 rounded-full border border-slate-600 cursor-pointer"
                 alt="Profile"
-                onClick={() => setCurrentPage(Page.PROFILE)}
+                onClick={() => handlePageChange(Page.PROFILE)}
               />
             </div>
           </div>

@@ -18,6 +18,10 @@ db.exec(`
     bio TEXT DEFAULT 'Estudante dedicado!',
     followers_count INTEGER DEFAULT 0,
     following_count INTEGER DEFAULT 0,
+    role TEXT DEFAULT 'user',
+    username TEXT,
+    birth_date TEXT,
+    gender TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )
 `);
@@ -29,6 +33,8 @@ db.exec(`
     user_id TEXT PRIMARY KEY,
     hours REAL DEFAULT 0,
     points INTEGER DEFAULT 0,
+    questions_count INTEGER DEFAULT 0,
+    accuracy REAL DEFAULT 0,
     trend TEXT DEFAULT 'neutral',
     FOREIGN KEY (user_id) REFERENCES users (id)
   )
@@ -75,6 +81,30 @@ try {
 
 try {
   db.exec("ALTER TABLE users ADD COLUMN last_seen DATETIME");
+} catch (e) { }
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'");
+} catch (e) { }
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN username TEXT");
+} catch (e) { }
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN birth_date TEXT");
+} catch (e) { }
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN gender TEXT");
+} catch (e) { }
+
+try {
+  db.exec("ALTER TABLE user_progress ADD COLUMN questions_count INTEGER DEFAULT 0");
+} catch (e) { }
+
+try {
+  db.exec("ALTER TABLE user_progress ADD COLUMN accuracy REAL DEFAULT 0");
 } catch (e) { }
 
 // Create Group Members Table (many-to-many)
@@ -173,10 +203,8 @@ const { count } = stmt.get();
 
 if (count === 0) {
   console.log('Seeding initial data...');
-  const insertUser = db.prepare('INSERT INTO users (id, name, email, password, avatar, bio, followers_count, following_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-  const insertProgress = db.prepare('INSERT INTO user_progress (user_id, hours, points, trend) VALUES (?, ?, ?, ?)');
-
   const mockUsers = [
+    { id: 'admin-id', name: 'Administrador', email: 'admin', avatar: 'https://picsum.photos/id/1/100/100', bio: 'Administrador do Sistema', followers: 0, following: 0, hours: 0, points: 10000, trend: 'up', role: 'admin' },
     { id: 'u1', name: 'Bruno Gomes', email: 'bruno@example.com', avatar: 'https://picsum.photos/id/12/100/100', bio: 'Focado em Medicina', followers: 120, following: 45, hours: 120.5, points: 1500, trend: 'up' },
     { id: 'u2', name: 'Juliana Lima', email: 'juliana@example.com', avatar: 'https://picsum.photos/id/65/100/100', bio: 'Concurseira Fiscal', followers: 340, following: 200, hours: 115.75, points: 1420, trend: 'neutral' },
     { id: 'u3', name: 'Carlos Souza', email: 'carlos@example.com', avatar: 'https://picsum.photos/id/91/100/100', bio: 'Estudando para OAB', followers: 50, following: 60, hours: 112.2, points: 1350, trend: 'down' },
@@ -184,13 +212,16 @@ if (count === 0) {
     { id: 'u5', name: 'Lucas Martins', email: 'lucas@example.com', avatar: 'https://picsum.photos/id/177/100/100', bio: 'Dev Fullstack', followers: 200, following: 150, hours: 105.3, points: 980, trend: 'up' },
   ];
 
-  // Note: In a real app, passwords should be hashed. For seeding mock users, we'll use a placeholder hash or plain text if we handle it in the auth logic.
-  // Let's assume we'll hash passwords in the register route. For these seeds, we'll put a dummy hash.
+  const adminHash = '$2b$10$g3c35OZoU8TaFEIhf5BLiu8dqvUGVUTbXSEbuaKTcd/Q.SRATJ2..';
   const dummyHash = '$2a$10$abcdefg'; // Mock hash
 
   mockUsers.forEach(u => {
-    insertUser.run(u.id, u.name, u.email, dummyHash, u.avatar, u.bio, u.followers, u.following);
-    insertProgress.run(u.id, u.hours, u.points, u.trend);
+    const insertUserWithRole = db.prepare('INSERT INTO users (id, name, email, password, avatar, bio, followers_count, following_count, role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    insertUserWithRole.run(u.id, u.name, u.email, u.email === 'admin' ? adminHash : dummyHash, u.avatar, u.bio, u.followers, u.following, u.role || 'user');
+    
+    // Use a custom insert for progress to include initial values
+    const insertProgressFull = db.prepare('INSERT INTO user_progress (user_id, hours, points, trend) VALUES (?, ?, ?, ?)');
+    insertProgressFull.run(u.id, u.hours || 0, u.points || 0, u.trend || 'neutral');
   });
 }
 

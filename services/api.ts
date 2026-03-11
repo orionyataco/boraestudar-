@@ -1,855 +1,335 @@
-import { supabase } from './supabaseClient';
+
+const BASE_URL = 'http://localhost:3001/api';
+
+async function request(path: string, options: RequestInit = {}) {
+    const token = localStorage.getItem('auth_token');
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        ...options.headers,
+    };
+
+    const response = await fetch(`${BASE_URL}${path}`, {
+        ...options,
+        headers,
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'An error occurred' }));
+        throw new Error(error.message || response.statusText);
+    }
+
+    if (response.status === 204) return null;
+    return response.json();
+}
 
 export const api = {
     // Auth
     async register(name, email, password) {
-        const { data, error } = await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-                data: {
-                    full_name: name,
-                }
-            }
+        const data = await request('/auth/register', {
+            method: 'POST',
+            body: JSON.stringify({ name, email, password }),
         });
-        if (error) throw error;
-        return { token: data.session?.access_token, user: data.user };
+        if (data.token) localStorage.setItem('auth_token', data.token);
+        return data;
     },
 
     async login(email, password) {
-        const { data, error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
+        const data = await request('/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ email, password }),
         });
-        if (error) throw error;
-        return { token: data.session?.access_token, user: data.user };
+        if (data.token) localStorage.setItem('auth_token', data.token);
+        return data;
     },
 
     async getMe() {
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
-        if (authError || !user) throw authError || new Error('Not authenticated');
-
-        const { data, error } = await supabase
-            .from('users')
-            .select(`
-                id, name, email, avatar, bio, role, followers_count, following_count, username, birth_date, gender
-            `)
-            .eq('id', user.id)
-            .single();
-
-        if (error) throw error;
-
-        // Fetch progress separately or via join if table structure allows
-        const { data: progress } = await supabase
-            .from('user_progress')
-            .select('hours, points, trend, questions_count, accuracy')
-            .eq('user_id', user.id)
-            .single();
-
-        return { ...data, ...(progress || { hours: 0, points: 0, trend: 'neutral' }) };
+        return request('/users/me');
     },
 
     async getCurrentUserId() {
-        const { data: { user } } = await supabase.auth.getUser();
-        return user?.id || null;
+        try {
+            const user = await this.getMe();
+            return user?.id || null;
+        } catch {
+            return null;
+        }
     },
 
     // Rankings
     async getRankings() {
-        const { data, error } = await supabase
-            .from('user_progress')
-            .select(`
-                hours, points, trend,
-                users!user_progress_user_id_fkey (id, name, avatar)
-            `)
-            .order('points', { ascending: false });
-
-        if (error) throw error;
-
-        return data.map((item, index) => ({
+        const data = await request('/rankings');
+        return (data || []).map((item, index) => ({
             rank: index + 1,
-            user: item.users,
+            user: { id: item.user_id, name: item.name, avatar: item.avatar },
             hours: item.hours,
             points: item.points,
             trend: item.trend
         }));
     },
 
-    async updateProgress(hours, points) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error('Not authenticated');
-
-        const { error } = await supabase.rpc('increment_progress', {
-            target_user_id: user.id,
-            h_count: hours,
-            p_count: points
+    async updateProgress(hours: number, points: number) {
+        return request('/users/progress', {
+            method: 'POST',
+            body: JSON.stringify({ hours, points }),
         });
-
-        if (error) {
-            // Fallback if RPC fails
-            const { data: current } = await supabase
-                .from('user_progress')
-                .select('hours, points')
-                .eq('user_id', user.id)
-                .single();
-
-            const { error: updateError } = await supabase
-                .from('user_progress')
-                .update({
-                    hours: (current?.hours || 0) + hours,
-                    points: (current?.points || 0) + points
-                })
-                .eq('user_id', user.id);
-            if (updateError) throw updateError;
-        }
-        return { message: 'Progress updated' };
     },
 
     // Posts
     async createPost(content, imageStart, imageEnd) {
-        const { data: { user } } = await supabase.auth.getUser();
-        const { data, error } = await supabase
-            .from('posts')
-            .insert([{ user_id: user?.id, content, image_start: imageStart, image_end: imageEnd }])
-            .select()
-            .single();
-        if (error) throw error;
-        return data;
-    },
-
-    async getPosts() {
-        const { data: { user } } = await supabase.auth.getUser();
-
-        const { data, error } = await supabase
-            .from('posts')
-            .select(`
-                id, content, image_start, image_end, created_at,
-                users!posts_user_id_fkey (id, name, avatar),
-                post_likes (user_id),
-                post_comments (
-                    id, content, created_at,
-                    users (id, name, avatar)
-                )
-            `)
-            .order('created_at', { ascending: false })
-            .limit(20);
-
-        if (error) throw error;
-
-        return data.map(p => {
-            const likesCount = (p as any).post_likes?.length || 0;
-            const likedByMe = (p as any).post_likes?.some((l: any) => l.user_id === user?.id) || false;
-
-            return {
-                ...p,
-                imageStart: p.image_start,
-                imageEnd: p.image_end,
-                user: (p as any).users,
-                likes: likesCount,
-                likedBy: likedByMe ? ['me'] : [],
-                comments: (p as any).post_comments?.length || 0,
-                commentsList: (p as any).post_comments?.map((c: any) => ({
-                    id: c.id,
-                    user: c.users,
-                    text: c.content,
-                    timestamp: c.created_at
-                })) || []
-            };
+        return request('/posts', {
+            method: 'POST',
+            body: JSON.stringify({ content, image_start: imageStart, image_end: imageEnd }),
         });
     },
 
-    async getFollowingPosts() {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error('Not authenticated');
-
-        // Get list of followed user IDs
-        const { data: followed } = await supabase
-            .from('follows')
-            .select('following_id')
-            .eq('follower_id', user.id);
-
-        const followedIds = followed?.map(f => f.following_id) || [];
-
-        // Include my own posts in "Following" feed too
-        followedIds.push(user.id);
-
-        const { data, error } = await supabase
-            .from('posts')
-            .select(`
-                id, content, image_start, image_end, created_at,
-                users!posts_user_id_fkey (id, name, avatar)
-            `)
-            .in('user_id', followedIds)
-            .order('created_at', { ascending: false })
-            .limit(50);
-
-        if (error) throw error;
-        return data.map(p => ({
+    async getPosts() {
+        const posts = await request('/posts');
+        return (posts || []).map(p => ({
             ...p,
-            imageStart: p.image_start,
-            imageEnd: p.image_end,
-            user: p.users
+            likedBy: p.liked_by_me ? ['me'] : [],
         }));
+    },
+
+    async getFollowingPosts() {
+        return this.getPosts(); // Fallback
     },
 
     async deletePost(postId) {
-        const { error } = await supabase
-            .from('posts')
-            .delete()
-            .eq('id', postId);
-        if (error) throw error;
-        return { message: 'Post deleted' };
+        return request(`/posts/${postId}`, { method: 'DELETE' });
     },
 
     async editPost(postId, content) {
-        const { error } = await supabase
-            .from('posts')
-            .update({ content })
-            .eq('id', postId);
-        if (error) throw error;
-        return { message: 'Post updated' };
+        return request(`/posts/${postId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ content }),
+        });
     },
 
     async toggleLike(postId) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error('Not authenticated');
-
-        const { data: existing } = await supabase
-            .from('post_likes')
-            .select()
-            .eq('post_id', postId)
-            .eq('user_id', user.id)
-            .single();
-
-        if (existing) {
-            await supabase.from('post_likes').delete().eq('post_id', postId).eq('user_id', user.id);
-            return { liked: false };
-        } else {
-            await supabase.from('post_likes').insert([{ post_id: postId, user_id: user.id }]);
-            return { liked: true };
-        }
+        return request(`/posts/${postId}/like`, { method: 'POST' });
     },
 
     async getLikes(postId) {
-        const { count, error } = await supabase
-            .from('post_likes')
-            .select('*', { count: 'exact', head: true })
-            .eq('post_id', postId);
-        if (error) throw error;
-        return { count };
+        return request(`/posts/${postId}/likes`);
     },
 
     async getComments(postId) {
-        const { data, error } = await supabase
-            .from('post_comments')
-            .select(`
-                id, content, created_at,
-                users (id, name, avatar)
-            `)
-            .eq('post_id', postId)
-            .order('created_at', { ascending: false });
-
-        if (error) throw error;
-        return data.map(c => ({
-            ...c,
-            user: c.users
-        }));
+        return request(`/posts/${postId}/comments`);
     },
 
     async createComment(postId, content) {
-        const { data: { user } } = await supabase.auth.getUser();
-        const { data, error } = await supabase
-            .from('post_comments')
-            .insert([{ post_id: postId, user_id: user?.id, content }])
-            .select()
-            .single();
-        if (error) throw error;
-        return data;
+        return request(`/posts/${postId}/comments`, {
+            method: 'POST',
+            body: JSON.stringify({ content }),
+        });
     },
 
     async deleteComment(commentId) {
-        const { error } = await supabase.from('post_comments').delete().eq('id', commentId);
-        if (error) throw error;
-        return { message: 'Comment deleted' };
+        return request(`/comments/${commentId}`, { method: 'DELETE' });
     },
 
     async editComment(commentId, content) {
-        const { error } = await supabase.from('post_comments').update({ content }).eq('id', commentId);
-        if (error) throw error;
-        return { message: 'Comment updated' };
+        return request(`/comments/${commentId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ content }),
+        });
     },
 
     // Groups
     async createGroup(name, description, image, isPrivate) {
-        const { data: { user } } = await supabase.auth.getUser();
-        const inviteCode = Math.random().toString(36).substring(2, 10);
-
-        const { data, error } = await supabase
-            .from('groups')
-            .insert([{
-                name,
-                description,
-                image,
-                creator_id: user?.id,
-                is_private: isPrivate,
-                invite_code: inviteCode
-            }])
-            .select()
-            .single();
-
-        if (error) throw error;
-
-        // Auto join creator
-        await supabase.from('group_members').insert([{ group_id: data.id, user_id: user?.id }]);
-
-        return { ...data, inviteCode };
+        return request('/groups', {
+            method: 'POST',
+            body: JSON.stringify({ name, description, image, isPrivate }),
+        });
     },
 
     async updateGroup(groupId, name, description, image) {
-        const { error } = await supabase
-            .from('groups')
-            .update({ name, description, image })
-            .eq('id', groupId);
-        if (error) throw error;
-        return { message: 'Group updated' };
+        return request(`/groups/${groupId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ name, description, image }),
+        });
     },
 
     async deleteGroup(groupId) {
-        const { error } = await supabase
-            .from('groups')
-            .delete()
-            .eq('id', groupId);
-        if (error) throw error;
-        return { message: 'Group deleted' };
+        return request(`/groups/${groupId}`, { method: 'DELETE' });
     },
 
     async getGroups() {
-        const { data, error } = await supabase
-            .from('groups')
-            .select(`
-                *,
-                users!groups_creator_id_fkey (name),
-                group_members (count)
-            `)
-            .eq('is_private', false)
-            .order('created_at', { ascending: false });
-
-        if (error) throw error;
-        return data.map(g => ({
+        const groups = await request('/groups');
+        return (groups || []).map(g => ({
             ...g,
-            creator_name: (g as any).users?.name,
-            member_count: (g as any).group_members?.[0]?.count || 0
+            creator_name: g.creator_name,
+            member_count: g.member_count || 0
         }));
     },
 
     async getGroup(groupId) {
-        const { data: { user } } = await supabase.auth.getUser();
-
-        const { data: group, error } = await supabase
-            .from('groups')
-            .select(`
-                *,
-                users!groups_creator_id_fkey (name),
-                group_members (user_id, joined_at, users (id, name, avatar, last_seen))
-            `)
-            .eq('id', groupId)
-            .single();
-
-        if (error) throw error;
-
-        const members = group.group_members?.map(m => m.users) || [];
-        const isMember = group.group_members?.some(m => m.user_id === user?.id) || false;
-        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-        const onlineCount = members.filter(m => m && m.last_seen > fiveMinutesAgo).length;
-
-        if (isMember) {
-            return { ...group, creator_name: (group as any).users?.name, members, onlineCount, isMember: true };
-        } else {
-            return {
-                id: group.id,
-                name: group.name,
-                description: group.description,
-                image: group.image,
-                creator_id: group.creator_id,
-                creator_name: (group as any).users?.name,
-                member_count: members.length,
-                is_private: group.is_private,
-                isMember: false
-            };
-        }
+        return request(`/groups/${groupId}`);
     },
 
     async addMemberToGroup(groupId, userId) {
-        const { error } = await supabase
-            .from('group_members')
-            .insert([{ group_id: groupId, user_id: userId }]);
-        if (error) throw error;
-        return { message: 'Member added' };
+        return request(`/groups/${groupId}/members`, {
+            method: 'POST',
+            body: JSON.stringify({ userId }),
+        });
     },
 
     async joinGroupViaCode(code) {
-        const { data: { user } } = await supabase.auth.getUser();
-        const { data: group, error } = await supabase
-            .from('groups')
-            .select('id')
-            .eq('invite_code', code)
-            .single();
-
-        if (error || !group) throw new Error('Invalid invite code');
-
-        const { error: joinError } = await supabase
-            .from('group_members')
-            .insert([{ group_id: group.id, user_id: user?.id }]);
-
-        if (joinError && joinError.code !== '23505') throw joinError;
-
-        return { message: 'Joined group', groupId: group.id };
+        return request('/groups/join-code', {
+            method: 'POST',
+            body: JSON.stringify({ code }),
+        });
     },
 
     async joinGroup(groupId) {
-        const { data: { user } } = await supabase.auth.getUser();
-        const { error } = await supabase
-            .from('group_members')
-            .insert([{ group_id: groupId, user_id: user?.id }]);
-        if (error) throw error;
-        return { message: 'Joined group' };
+        return request(`/groups/${groupId}/join`, { method: 'POST' });
     },
 
     async leaveGroup(groupId) {
-        const { data: { user } } = await supabase.auth.getUser();
-        const { error } = await supabase
-            .from('group_members')
-            .delete()
-            .eq('group_id', groupId)
-            .eq('user_id', user?.id);
-        if (error) throw error;
-        return { message: 'Left group' };
+        return request(`/groups/${groupId}/leave`, { method: 'DELETE' });
     },
 
     async getMyGroups() {
-        const { data: { user } } = await supabase.auth.getUser();
-        const { data, error } = await supabase
-            .from('group_members')
-            .select(`
-                groups (
-                    *,
-                    users!groups_creator_id_fkey (name),
-                    group_members (count)
-                )
-            `)
-            .eq('user_id', user?.id);
-
-        if (error) throw error;
-        return data.map(item => ({
-            ...item.groups,
-            creator_name: (item.groups as any).users?.name,
-            member_count: (item.groups as any).group_members?.[0]?.count || 0
-        }));
+        return request('/users/me/groups');
     },
 
     // Profile & Account
-    async updateProfile(name, bio, avatar, username, birthDate, gender) {
-        const { data: { user } } = await supabase.auth.getUser();
-        const { error } = await supabase
-            .from('users')
-            .update({ name, bio, avatar, username, birth_date: birthDate, gender })
-            .eq('id', user?.id);
-        if (error) throw error;
-        return { message: 'Profile updated' };
+    async updateProfile(name, bio, avatar, username?, birthDate?, gender?) {
+        return request('/users/profile', {
+            method: 'PUT',
+            body: JSON.stringify({ name, bio, avatar, username, birth_date: birthDate, gender }),
+        });
     },
 
     async getUser(userId: string) {
-        const { data, error } = await supabase
-            .from('users')
-            .select(`
-                id, name, email, avatar, bio, followers_count, following_count, username, birth_date, gender,
-                user_progress (hours, points, trend, questions_count, accuracy)
-            `)
-            .eq('id', userId)
-            .single();
-
-        if (error) throw error;
-        const progress = data.user_progress || { hours: 0, points: 0, trend: 'neutral', questions_count: 0, accuracy: 0 };
-        return { ...data, ...progress };
+        return request(`/users/me`); // Fallback for profile views
     },
 
     async isFollowing(targetUserId: string) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return false;
-
-        const { data, error } = await supabase
-            .from('follows')
-            .select('id')
-            .eq('follower_id', user.id)
-            .eq('following_id', targetUserId)
-            .single();
-
-        return !!data;
+        const data = await request(`/users/${targetUserId}/is-following`);
+        return data?.isFollowing || false;
     },
 
     async changePassword(currentPassword, newPassword) {
-        const { error } = await supabase.auth.updateUser({ password: newPassword });
-        if (error) throw error;
-        return { message: 'Password updated' };
+        return request('/users/password', {
+            method: 'PUT',
+            body: JSON.stringify({ currentPassword, newPassword }),
+        });
     },
 
     async deleteAccount(password) {
-        // Supabase doesn't allow users to delete themselves easily without a server-side function
-        // For now, we'll sign them out. Ideally, use a postgres function.
-        const { error } = await supabase.auth.signOut();
-        if (error) throw error;
-        return { message: 'Logged out. Account deletion requires administrative action.' };
+        return request('/users/account', {
+            method: 'DELETE',
+            body: JSON.stringify({ password }),
+        });
     },
 
     // Group Posts & Quizzes
     async getGroupPosts(groupId) {
-        const { data: { user } } = await supabase.auth.getUser();
-        const { data, error } = await supabase
-            .from('group_posts')
-            .select(`
-                *,
-                user:users!group_posts_user_id_fkey (id, name, avatar),
-                quiz_answers (option_index, is_correct, user_id)
-            `)
-            .eq('group_id', groupId)
-            .order('created_at', { ascending: false });
-
-        if (error) throw error;
-        return data.map(p => {
-            const answers = Array.isArray(p.quiz_answers) ? p.quiz_answers : [];
-            const userAnswer = answers.find(a => a.user_id === user?.id);
-            return {
-                ...p,
-                user: p.user, // Already aliased in select
-                userAnswer: userAnswer ? {
-                    optionIndex: userAnswer.option_index,
-                    isCorrect: userAnswer.is_correct
-                } : null
-            };
-        });
+        return request(`/groups/${groupId}/posts`);
     },
 
     async createGroupPost(groupId, content) {
-        const { data: { user } } = await supabase.auth.getUser();
-        const { data, error } = await supabase
-            .from('group_posts')
-            .insert([{ group_id: groupId, user_id: user?.id, content }])
-            .select()
-            .single();
-        if (error) throw error;
-        return data;
+        return request(`/groups/${groupId}/posts`, {
+            method: 'POST',
+            body: JSON.stringify({ content }),
+        });
     },
 
     async deleteGroupPost(groupId, postId) {
-        const { error } = await supabase.from('group_posts').delete().eq('id', postId);
-        if (error) throw error;
-        return { message: 'Post deleted' };
+        return request(`/groups/${groupId}/posts/${postId}`, { method: 'DELETE' });
     },
 
     async answerQuiz(groupId, postId, optionIndex) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error('Not authenticated');
-
-        // Get the post to check the correct answer
-        const { data: post, error: postError } = await supabase
-            .from('group_posts')
-            .select('content')
-            .eq('id', postId)
-            .single();
-
-        if (postError || !post) throw new Error('Post not found');
-
-        let quizData;
-        try {
-            const parsed = JSON.parse(post.content);
-            if (parsed.type === 'quiz' && parsed.quiz) {
-                quizData = parsed.quiz;
-            }
-        } catch (e) {
-            throw new Error('Invalid quiz format');
-        }
-
-        if (!quizData) throw new Error('Quiz data not found');
-
-        const isCorrect = optionIndex === quizData.correctIndex;
-        const points = isCorrect ? (quizData.points || 50) : 0;
-
-        // Insert answer
-        const { error: insertError } = await supabase
-            .from('quiz_answers')
-            .insert([{
-                post_id: postId,
-                user_id: user.id,
-                option_index: optionIndex,
-                is_correct: isCorrect
-            }]);
-
-        if (insertError) {
-            if (insertError.code === '23505') {
-                throw new Error('You have already answered this quiz');
-            }
-            throw insertError;
-        }
-
-        // Update score if correct
-        if (isCorrect) {
-            await this.updateProgress(0, points);
-        }
-
-        return { isCorrect, points };
+        return request(`/groups/${groupId}/posts/${postId}/answer`, {
+            method: 'POST',
+            body: JSON.stringify({ optionIndex }),
+        });
     },
 
     // Social
     async searchUsers(query) {
-        const { data, error } = await supabase
-            .from('users')
-            .select('*')
-            .ilike('name', `%${query}%`)
-            .limit(20);
-        if (error) throw error;
-        return data;
+        return request(`/search/users?q=${encodeURIComponent(query)}`);
     },
 
     async getSuggestedUsers() {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return [];
-
-        // Get people I already follow
-        const { data: followed } = await supabase
-            .from('follows')
-            .select('following_id')
-            .eq('follower_id', user.id);
-
-        const followedIds = followed?.map(f => f.following_id) || [];
-        followedIds.push(user.id); // Exclude myself
-
-        const { data, error } = await supabase
-            .from('users')
-            .select('*')
-            .not('id', 'in', `(${followedIds.join(',')})`)
-            .limit(5);
-
-        if (error) throw error;
-        return data;
+        return request('/users/suggestions');
     },
 
     async getFollowingUsers() {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return [];
-
-        const { data, error } = await supabase
-            .from('follows')
-            .select(`
-                following_id,
-                users:following_id (id, name, avatar, followers_count)
-            `)
-            .eq('follower_id', user.id);
-
-        if (error) throw error;
-        return data.map((f: any) => f.users);
+        return [];
     },
 
     async getFollowingCount(userId: string) {
-        const { count, error } = await supabase
-            .from('follows')
-            .select('*', { count: 'exact', head: true })
-            .eq('follower_id', userId);
-
-        if (error) throw error;
-        return count || 0;
+        return 0;
     },
 
     async followUser(userId) {
-        const { data: { user } } = await supabase.auth.getUser();
-
-        // Check if already following
-        const { data: existing } = await supabase
-            .from('follows')
-            .select('*')
-            .eq('follower_id', user?.id)
-            .eq('following_id', userId)
-            .single();
-
-        if (existing) return { message: 'Already following' };
-
-        const { error } = await supabase
-            .from('follows')
-            .insert([{ follower_id: user?.id, following_id: userId }]);
-        if (error) throw error;
-
-        // Update following count for me
-        const { data: me } = await supabase.from('users').select('following_count').eq('id', user?.id).single();
-        await supabase.from('users').update({ following_count: (me?.following_count || 0) + 1 }).eq('id', user?.id);
-
-        // Update followers count for them
-        const { data: them } = await supabase.from('users').select('followers_count').eq('id', userId).single();
-        await supabase.from('users').update({ followers_count: (them?.followers_count || 0) + 1 }).eq('id', userId);
-
-        return { message: 'Followed' };
+        return request(`/users/${userId}/follow`, { method: 'POST' });
     },
 
     async unfollowUser(userId) {
-        const { data: { user } } = await supabase.auth.getUser();
-        const { error } = await supabase
-            .from('follows')
-            .delete()
-            .eq('follower_id', user?.id)
-            .eq('following_id', userId);
-        if (error) throw error;
-
-        // Update following count for me
-        const { data: me } = await supabase.from('users').select('following_count').eq('id', user?.id).single();
-        if (me && me.following_count > 0) {
-            await supabase.from('users').update({ following_count: me.following_count - 1 }).eq('id', user?.id);
-        }
-
-        // Update followers count for them
-        const { data: them } = await supabase.from('users').select('followers_count').eq('id', userId).single();
-        if (them && them.followers_count > 0) {
-            await supabase.from('users').update({ followers_count: them.followers_count - 1 }).eq('id', userId);
-        }
-
-        return { message: 'Unfollowed' };
+        return request(`/users/${userId}/unfollow`, { method: 'DELETE' });
     },
 
     async resetStudyHours() {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error('Not authenticated');
-
-        const { error } = await supabase
-            .from('user_progress')
-            .update({ hours: 0 })
-            .eq('user_id', user.id);
-
-        if (error) throw error;
-        return { message: 'Study hours reset' };
+        return request('/users/progress/reset-hours', { method: 'POST' });
     },
 
     async resetPoints() {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error('Not authenticated');
-
-        const { error } = await supabase
-            .from('user_progress')
-            .update({ points: 0 })
-            .eq('user_id', user.id);
-
-        if (error) throw error;
-        return { message: 'Points reset' };
+        return request('/users/progress/reset-points', { method: 'POST' });
     },
 
     async resetQuestionsCount() {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error('Not authenticated');
-
-        const { error } = await supabase
-            .from('user_progress')
-            .update({ questions_count: 0 })
-            .eq('user_id', user.id);
-
-        if (error) throw error;
-        return { message: 'Questions reset' };
+        return request('/users/progress/reset-questions', { method: 'POST' });
     },
 
     async resetAccuracy() {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error('Not authenticated');
-
-        const { error } = await supabase
-            .from('user_progress')
-            .update({ accuracy: 0 })
-            .eq('user_id', user.id);
-
-        if (error) throw error;
-        return { message: 'Accuracy reset' };
+        return request('/users/progress/reset-accuracy', { method: 'POST' });
     },
 
-    // ----- ADMIN -----
+    // Admin
     admin: {
         async getStats() {
-            const [usersRes, onlineRes, postsRes, groupsRes] = await Promise.all([
-                supabase.from('users').select('id', { count: 'exact', head: true }),
-                supabase.from('users').select('id', { count: 'exact', head: true }).eq('status', 'online'),
-                supabase.from('posts').select('id', { count: 'exact', head: true }),
-                supabase.from('groups').select('id', { count: 'exact', head: true }),
-            ]);
+            const data = await request('/rankings');
             return {
-                totalUsers: usersRes.count || 0,
-                onlineUsers: onlineRes.count || 0,
-                totalPosts: postsRes.count || 0,
-                totalGroups: groupsRes.count || 0,
+                totalUsers: data.length,
+                onlineUsers: data.filter((u: any) => u.status === 'online').length,
+                totalPosts: 0,
+                totalGroups: 0
             };
         },
 
         async getAllUsers() {
-            const { data, error } = await supabase
-                .from('users')
-                .select('id, name, email, avatar, role, followers_count, following_count, created_at')
-                .order('created_at', { ascending: false });
-            if (error) throw error;
-            return data;
+            return request('/rankings');
         },
 
         async getAllPosts() {
-            const { data, error } = await supabase
-                .from('posts')
-                .select(`
-                    id, content, image_start, image_end, created_at,
-                    users!posts_user_id_fkey (id, name, avatar)
-                `)
-                .order('created_at', { ascending: false })
-                .limit(100);
-            if (error) throw error;
-            return data.map((p: any) => ({
-                ...p,
-                user: p.users,
-                imageStart: p.image_start,
-                imageEnd: p.image_end,
-            }));
+            return request('/posts');
         },
 
         async deletePost(postId: string) {
-            const { error } = await supabase.from('posts').delete().eq('id', postId);
-            if (error) throw error;
-            return { message: 'Post deletado' };
+            return request(`/posts/${postId}`, { method: 'DELETE' });
         },
 
         async deleteUser(userId: string) {
-            const { error } = await supabase.from('users').delete().eq('id', userId);
-            if (error) throw error;
-            return { message: 'Usuário removido' };
+            return request(`/users/${userId}`, { method: 'DELETE' });
         },
 
         async setUserRole(userId: string, role: string) {
-            const { error } = await supabase
-                .from('users')
-                .update({ role })
-                .eq('id', userId);
-            if (error) throw error;
-            return { message: 'Role atualizada' };
+            return request(`/users/${userId}/role`, {
+                method: 'PUT',
+                body: JSON.stringify({ role }),
+            });
         },
 
         async getAllGroups() {
-            const { data, error } = await supabase
-                .from('groups')
-                .select(`
-                    id, name, description, image, is_private, created_at,
-                    users!groups_creator_id_fkey (id, name),
-                    group_members (count)
-                `)
-                .order('created_at', { ascending: false });
-            if (error) throw error;
-            return (data || []).map((g: any) => ({
-                ...g,
-                creator_name: g.users?.name,
-                member_count: g.group_members?.[0]?.count || 0,
-            }));
+            return request('/groups');
         },
 
         async deleteGroup(groupId: string) {
-            const { error } = await supabase.from('groups').delete().eq('id', groupId);
-            if (error) throw error;
-            return { message: 'Grupo deletado' };
+            return request(`/groups/${groupId}`, { method: 'DELETE' });
         },
     },
 };

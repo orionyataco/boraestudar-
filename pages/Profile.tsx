@@ -208,7 +208,7 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
                 if (profileUser) {
                     setProfileUser({ ...profileUser, hours: 0 });
                 }
-                onRefresh();
+                if (onRefresh) onRefresh();
             } catch (error: any) {
                 alert(error.message);
             }
@@ -223,7 +223,7 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
                 if (profileUser) {
                     setProfileUser({ ...profileUser, points: 0 });
                 }
-                onRefresh();
+                if (onRefresh) onRefresh();
             } catch (error: any) {
                 alert(error.message);
             }
@@ -237,7 +237,7 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
                 if (profileUser) {
                     setProfileUser({ ...profileUser, questions_count: 0 });
                 }
-                onRefresh();
+                if (onRefresh) onRefresh();
             } catch (error: any) {
                 alert(error.message);
             }
@@ -251,7 +251,7 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
                 if (profileUser) {
                     setProfileUser({ ...profileUser, accuracy: 0 });
                 }
-                onRefresh();
+                if (onRefresh) onRefresh();
             } catch (error: any) {
                 alert(error.message);
             }

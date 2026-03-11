@@ -31,6 +31,7 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
     const [quizCorrect, setQuizCorrect] = useState(0);
     const [answeringQuizId, setAnsweringQuizId] = useState<string | null>(null);
     const [showCelebration, setShowCelebration] = useState(false);
+    const [isCreatingQuiz, setIsCreatingQuiz] = useState(false);
 
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
@@ -46,7 +47,7 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
 
     const loadGroups = async () => {
         try {
-            const groups = await api.getGroups();
+            const groups = await api.getMyGroups();
             setChannels(groups);
             // If a specific group was requested (e.g., from joining or clicking a group), use it.
             // Otherwise, only default to groups[0] if we haven't set a channel yet.
@@ -198,31 +199,19 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
         if (!file) return;
 
         try {
-            const isImage = file.type.startsWith('image/');
-
-            if (isImage) {
-                const reader = new FileReader();
-                reader.onloadend = async () => {
-                    const base64 = reader.result as string;
-                    const messageContent = JSON.stringify({
-                        type: 'file',
-                        text: file.name,
-                        fileName: file.name,
-                        fileUrl: base64
-                    });
-                    await api.createGroupPost(activeChannel, messageContent);
-                    await loadMessages(activeChannel);
-                };
-                reader.readAsDataURL(file);
-            } else {
+            const reader = new FileReader();
+            reader.onloadend = async () => {
+                const base64 = reader.result as string;
                 const messageContent = JSON.stringify({
                     type: 'file',
                     text: file.name,
-                    fileName: file.name
+                    fileName: file.name,
+                    fileUrl: base64
                 });
                 await api.createGroupPost(activeChannel, messageContent);
                 await loadMessages(activeChannel);
-            }
+            };
+            reader.readAsDataURL(file);
 
             // Reset input
             if (fileInputRef.current) fileInputRef.current.value = '';
@@ -233,6 +222,7 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
     };
 
     const handleCreateQuiz = async () => {
+        if (isCreatingQuiz) return;
         // Filter out empty options
         const validOptions = quizOptions.filter(o => o.trim() !== '');
 
@@ -256,6 +246,7 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
         };
 
         try {
+            setIsCreatingQuiz(true);
             const messageContent = JSON.stringify({
                 type: 'quiz',
                 text: 'Questão Desafio',
@@ -272,6 +263,8 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
             await loadMessages(activeChannel);
         } catch (error) {
             console.error('Error creating quiz:', error);
+        } finally {
+            setIsCreatingQuiz(false);
         }
     };
 
@@ -369,13 +362,14 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
 
                             <button
                                 onClick={handleCreateQuiz}
-                                className={`w-full font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2 ${quizQuestion.trim() && quizOptions.filter(o => o.trim()).length >= 2
+                                disabled={isCreatingQuiz || !(quizQuestion.trim() && quizOptions.filter(o => o.trim()).length >= 2)}
+                                className={`w-full font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2 ${quizQuestion.trim() && quizOptions.filter(o => o.trim()).length >= 2 && !isCreatingQuiz
                                     ? 'bg-green-600 hover:bg-green-500 text-white'
                                     : 'bg-slate-700 text-slate-400 cursor-not-allowed'
                                     }`}
                             >
                                 <HelpCircle size={20} />
-                                Lançar Desafio
+                                {isCreatingQuiz ? 'Lançando...' : 'Lançar Desafio'}
                             </button>
                         </div>
                     </div>
@@ -505,10 +499,19 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
                                             <div className="bg-blue-600 p-2 rounded">
                                                 <FileText size={20} className="text-white" />
                                             </div>
-                                            <div className="text-sm">
+                                            <div className="text-sm flex-1">
                                                 <p className="text-blue-300 font-medium">{msg.fileName}</p>
                                                 <p className="text-blue-400/60 text-xs">Arquivo</p>
                                             </div>
+                                            {msg.fileUrl && (
+                                                <a
+                                                    href={msg.fileUrl}
+                                                    download={msg.fileName}
+                                                    className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
+                                                >
+                                                    Baixar
+                                                </a>
+                                            )}
                                         </div>
                                     )
                                 )}

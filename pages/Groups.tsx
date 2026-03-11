@@ -328,12 +328,21 @@ export const Groups: React.FC<GroupsProps> = ({ onNavigate }) => {
                                         <Users size={16} />
                                         {group.member_count} {group.member_count === 1 ? 'membro' : 'membros'}
                                     </span>
-                                    <button
-                                        onClick={() => handleJoinGroup(group.id)}
-                                        className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium rounded-lg transition-colors"
-                                    >
-                                        Entrar
-                                    </button>
+                                    {myGroups.some(mg => mg.id === group.id) ? (
+                                        <button
+                                            onClick={() => onNavigate && onNavigate('CHAT', group.id)}
+                                            className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors"
+                                        >
+                                            Abrir Chat
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={() => handleJoinGroup(group.id)}
+                                            className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium rounded-lg transition-colors"
+                                        >
+                                            Entrar
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         ))
