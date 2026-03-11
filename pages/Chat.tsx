@@ -30,7 +30,7 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
     const [quizOptions, setQuizOptions] = useState(['', '', '', '']);
     const [quizCorrect, setQuizCorrect] = useState(0);
     const [answeringQuizId, setAnsweringQuizId] = useState<string | null>(null);
-    const [showCelebration, setShowCelebration] = useState(false);
+    const [celebrationPoints, setCelebrationPoints] = useState<number | null>(null);
     const [isCreatingQuiz, setIsCreatingQuiz] = useState(false);
 
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -276,9 +276,10 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
             const result = await api.answerQuiz(activeChannel, msgId, optionIndex);
 
             if (result.isCorrect) {
-                onUpdateScore(result.points);
-                setShowCelebration(true);
-                setTimeout(() => setShowCelebration(false), 3000);
+                // O backend já atualiza o score, então passamos 0 para o onUpdateScore apenas forçar recarregamento do user info
+                onUpdateScore(0);
+                setCelebrationPoints(result.points);
+                setTimeout(() => setCelebrationPoints(null), 3000);
             }
 
             // Refresh messages to show updated state
@@ -299,12 +300,12 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
     return (
         <div className="flex h-[calc(100vh-2rem)] pt-2 overflow-hidden relative">
             {/* Celebration Overlay */}
-            {showCelebration && (
+            {celebrationPoints !== null && (
                 <div className="fixed inset-0 pointer-events-none z-50 flex items-center justify-center">
                     <div className="bg-green-500/90 text-white px-8 py-6 rounded-3xl shadow-2xl animate-bounce flex flex-col items-center gap-2 backdrop-blur-sm">
                         <div className="text-6xl">🎉</div>
-                        <h2 className="text-3xl font-bold">Parabéns!</h2>
-                        <p className="text-xl font-medium">+50 Pontos</p>
+                        <h2 className="text-3xl font-bold">Resposta Correta!</h2>
+                        <p className="text-xl font-medium">+{celebrationPoints} {celebrationPoints === 1 ? 'Ponto' : 'Pontos'}</p>
                     </div>
                 </div>
             )}
