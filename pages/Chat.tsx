@@ -9,9 +9,10 @@ interface ChatProps {
     user: any;
     onBack?: () => void;
     initialGroupId?: string;
+    onNavigateToProfile?: (userId: string) => void;
 }
 
-export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initialGroupId }) => {
+export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initialGroupId, onNavigateToProfile }) => {
     // Channels State
     const [channels, setChannels] = useState<any[]>([]);
     const [activeChannel, setActiveChannel] = useState<string>('default');
@@ -72,8 +73,7 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
             const posts = await api.getGroupPosts(groupId);
             console.log('Posts carregados:', posts);
 
-            const { data: { user: supabaseUser } } = await supabase.auth.getUser();
-            const currentUserId = supabaseUser?.id;
+            const currentUserId = user?.id;
 
             const formattedMessages: ChatMessage[] = posts.map((p: any) => {
                 let displayType: 'text' | 'file' | 'quiz' = 'text';
@@ -98,9 +98,9 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
 
                 return {
                     id: p.id,
-                    userId: p.user?.id || 'unknown',
-                    userName: p.user?.name || 'Usuário',
-                    userAvatar: p.user?.avatar && !p.user.avatar.startsWith('blob:') ? p.user.avatar : `https://picsum.photos/seed/${p.user_id}/100/100`,
+                    userId: p.user_id || 'unknown',
+                    userName: p.user_name || 'Usuário',
+                    userAvatar: p.user_avatar && !p.user_avatar.startsWith('blob:') ? p.user_avatar : `https://picsum.photos/seed/${p.user_id}/100/100`,
                     text: displayText,
                     timestamp: p.created_at ? new Date(p.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--',
                     isMe: p.user_id === currentUserId,
@@ -473,13 +473,17 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
                             {!msg.isMe && (
                                 <img
                                     src={(msg as any).userAvatar && !(msg as any).userAvatar.startsWith('blob:') ? (msg as any).userAvatar : `https://picsum.photos/seed/${msg.userId}/100/100`}
-                                    className="w-8 h-8 md:w-10 md:h-10 rounded-full mt-1 border border-slate-700"
+                                    className="w-8 h-8 md:w-10 md:h-10 rounded-full mt-1 border border-slate-700 cursor-pointer hover:opacity-80 transition-opacity"
                                     alt="User"
+                                    onClick={() => onNavigateToProfile?.(msg.userId)}
                                 />
                             )}
                             <div className={`flex flex-col max-w-[90%] sm:max-w-[85%] md:max-w-[60%] ${msg.isMe ? 'items-end' : 'items-start'}`}>
                                 <div className={`flex items-baseline gap-2 mb-1 ${msg.isMe ? 'flex-row-reverse' : ''}`}>
-                                    <span className="text-sm font-bold text-slate-300">
+                                    <span 
+                                        className={`text-sm font-bold transition-colors ${msg.isMe ? 'text-slate-300' : 'text-slate-300 cursor-pointer hover:text-blue-400'}`}
+                                        onClick={() => !msg.isMe && onNavigateToProfile?.(msg.userId)}
+                                    >
                                         {msg.isMe ? 'Você' : (msg as any).userName || 'Usuário'}
                                     </span>
                                     <span className="text-xs text-slate-500">{msg.timestamp}</span>
@@ -693,7 +697,11 @@ export const Chat: React.FC<ChatProps> = ({ onUpdateScore, user, onBack, initial
                                 <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Membros Online ({currentGroup.onlineCount || 0})</h4>
                                 <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                                     {(currentGroup.members || []).map((m: any) => (
-                                        <div key={m.id} className="flex items-center gap-3 p-2 hover:bg-slate-800 rounded-lg cursor-pointer transition-colors">
+                                        <div 
+                                            key={m.id} 
+                                            className="flex items-center gap-3 p-2 hover:bg-slate-800 rounded-lg cursor-pointer transition-colors"
+                                            onClick={() => onNavigateToProfile?.(m.id)}
+                                        >
                                             <div className="relative">
                                                 <img src={m.avatar && !m.avatar.startsWith('blob:') ? m.avatar : `https://picsum.photos/seed/${m.id}/100/100`} className="w-8 h-8 rounded-full border border-slate-700 object-cover" alt={m.name} />
                                                 {/* Simulate online status based on recent activity timestamp if available, for now just show dot for everyone or based on onlineCount logic */}

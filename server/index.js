@@ -3,6 +3,7 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import db from './database.js';
+db.pragma('foreign_keys = ON');
 import { randomUUID } from 'crypto';
 
 const app = express();
@@ -23,6 +24,14 @@ const authenticateToken = (req, res, next) => {
     jwt.verify(token, JWT_SECRET, (err, user) => {
         if (err) return res.sendStatus(403);
         req.user = user;
+        
+        // Update last_seen asynchronously
+        try {
+            db.prepare('UPDATE users SET last_seen = ? WHERE id = ?').run(new Date().toISOString(), user.id);
+        } catch (e) {
+            console.error('Failed to update last_seen:', e);
+        }
+        
         next();
     });
 };
@@ -99,6 +108,25 @@ app.get('/api/users/me', authenticateToken, (req, res) => {
             WHERE u.id = ?
         `);
         const user = stmt.get(req.user.id);
+        if (!user) return res.sendStatus(404);
+        res.json(user);
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
+    }
+});
+
+app.get('/api/users/:id', authenticateToken, (req, res) => {
+    try {
+        const stmt = db.prepare(`
+            SELECT u.id, u.name, u.email, u.avatar, u.bio, u.followers_count, u.following_count, u.role, 
+                   u.username, u.birth_date, u.gender,
+                   p.hours, p.points, p.questions_count, p.accuracy, p.trend 
+            FROM users u 
+            JOIN user_progress p ON u.id = p.user_id 
+            WHERE u.id = ?
+        `);
+        const user = stmt.get(req.params.id);
         if (!user) return res.sendStatus(404);
         res.json(user);
     } catch (error) {
@@ -260,13 +288,25 @@ app.get('/api/posts', (req, res) => {
 
 app.delete('/api/posts/:id', authenticateToken, (req, res) => {
     try {
-        const stmt = db.prepare('DELETE FROM posts WHERE id = ? AND user_id = ?');
-        const result = stmt.run(req.params.id, req.user.id);
+        const userId = req.user.id;
+        const postId = req.params.id;
 
-        if (result.changes === 0) {
-            return res.status(404).json({ message: 'Post not found or unauthorized' });
+        // Check if user is author or admin
+        const userStmt = db.prepare('SELECT role FROM users WHERE id = ?');
+        const user = userStmt.get(userId);
+        
+        const postStmt = db.prepare('SELECT user_id FROM posts WHERE id = ?');
+        const post = postStmt.get(postId);
+
+        if (!post) {
+            return res.status(404).json({ message: 'Post not found' });
         }
 
+        if (post.user_id !== userId && user?.role !== 'admin') {
+            return res.status(403).json({ message: 'Unauthorized' });
+        }
+
+        db.prepare('DELETE FROM posts WHERE id = ?').run(postId);
         res.json({ message: 'Post deleted' });
     } catch (error) {
         console.error(error);
@@ -498,10 +538,16 @@ app.delete('/api/groups/:id/leave', authenticateToken, (req, res) => {
     }
 });
 
-// Delete group (only creator)
+// Delete group (only creator or admin)
 app.delete('/api/groups/:id', authenticateToken, (req, res) => {
     try {
-        // Check if user is the creator
+        const userId = req.user.id;
+        
+        // Check user role
+        const userStmt = db.prepare('SELECT role FROM users WHERE id = ?');
+        const user = userStmt.get(userId);
+
+        // Check if group exists and who is the creator
         const groupStmt = db.prepare('SELECT creator_id FROM groups WHERE id = ?');
         const group = groupStmt.get(req.params.id);
 
@@ -509,8 +555,8 @@ app.delete('/api/groups/:id', authenticateToken, (req, res) => {
             return res.status(404).json({ message: 'Group not found' });
         }
 
-        if (group.creator_id !== req.user.id) {
-            return res.status(403).json({ message: 'Only the creator can delete this group' });
+        if (group.creator_id !== userId && user?.role !== 'admin') {
+            return res.status(403).json({ message: 'Only the creator or an admin can delete this group' });
         }
 
         // Delete group (CASCADE will handle members and posts)
@@ -913,6 +959,40 @@ app.get('/api/users/:id/is-following', authenticateToken, (req, res) => {
     }
 });
 
+// Get following list
+app.get('/api/users/:id/following', authenticateToken, (req, res) => {
+    try {
+        const stmt = db.prepare(`
+            SELECT u.id, u.name, u.avatar, u.bio, u.followers_count
+            FROM users u
+            JOIN follows f ON u.id = f.following_id
+            WHERE f.follower_id = ?
+        `);
+        const following = stmt.all(req.params.id);
+        res.json(following);
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
+    }
+});
+
+// Get followers list
+app.get('/api/users/:id/followers', authenticateToken, (req, res) => {
+    try {
+        const stmt = db.prepare(`
+            SELECT u.id, u.name, u.avatar, u.bio, u.followers_count
+            FROM users u
+            JOIN follows f ON u.id = f.follower_id
+            WHERE f.following_id = ?
+        `);
+        const followers = stmt.all(req.params.id);
+        res.json(followers);
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
+    }
+});
+
 // --- NOTIFICATIONS ---
 
 // Get user notifications
@@ -1001,8 +1081,11 @@ app.delete('/api/groups/:groupId/posts/:postId', authenticateToken, (req, res) =
         const groupStmt = db.prepare('SELECT creator_id FROM groups WHERE id = ?');
         const group = groupStmt.get(groupId);
 
-        // Allow if user is post author OR group creator
-        if (post.user_id !== userId && (!group || group.creator_id !== userId)) {
+        // Allow if user is post author OR group creator OR admin
+        const userStmt = db.prepare('SELECT role FROM users WHERE id = ?');
+        const user = userStmt.get(userId);
+
+        if (post.user_id !== userId && (!group || group.creator_id !== userId) && user?.role !== 'admin') {
             return res.status(403).json({ message: 'Unauthorized' });
         }
 
@@ -1154,17 +1237,20 @@ app.post('/api/groups/:groupId/posts/:postId/answer', authenticateToken, (req, r
 
 app.get('/api/admin/stats', authenticateToken, (req, res) => {
     try {
+        const adminCheck = db.prepare('SELECT role FROM users WHERE id = ?').get(req.user.id);
+        if (adminCheck?.role !== 'admin') return res.sendStatus(403);
+
         const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
-        const postCount = db.prepare('SELECT COUNT(*) as count FROM posts').get().count;
+        const feedPostCount = db.prepare('SELECT COUNT(*) as count FROM posts').get().count;
+        const groupPostCount = db.prepare('SELECT COUNT(*) as count FROM group_posts').get().count;
         const groupCount = db.prepare('SELECT COUNT(*) as count FROM groups').get().count;
 
-        // Roughly estimate "online" as users seen in last 10 mins
         const tenMinsAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
         const onlineCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE last_seen > ?').get(tenMinsAgo).count;
 
         res.json({
             totalUsers: userCount,
-            totalPosts: postCount,
+            totalPosts: feedPostCount + groupPostCount,
             totalGroups: groupCount,
             onlineUsers: onlineCount || 0
         });
@@ -1176,6 +1262,8 @@ app.get('/api/admin/stats', authenticateToken, (req, res) => {
 
 app.get('/api/admin/users', authenticateToken, (req, res) => {
     try {
+        const adminCheck = db.prepare('SELECT role FROM users WHERE id = ?').get(req.user.id);
+        if (adminCheck?.role !== 'admin') return res.sendStatus(403);
         const users = db.prepare(`
             SELECT u.*, p.points, p.hours 
             FROM users u 
@@ -1191,6 +1279,8 @@ app.get('/api/admin/users', authenticateToken, (req, res) => {
 
 app.get('/api/admin/groups', authenticateToken, (req, res) => {
     try {
+        const adminCheck = db.prepare('SELECT role FROM users WHERE id = ?').get(req.user.id);
+        if (adminCheck?.role !== 'admin') return res.sendStatus(403);
         const groups = db.prepare(`
             SELECT g.*, u.name as creator_name, COUNT(gm.user_id) as member_count
             FROM groups g

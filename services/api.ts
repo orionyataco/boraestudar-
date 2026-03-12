@@ -61,7 +61,7 @@ export const api = {
         const data = await request('/rankings');
         return (data || []).map((item, index) => ({
             rank: index + 1,
-            user: { id: item.user_id, name: item.name, avatar: item.avatar },
+            user: { id: item.user.id, name: item.user.name, avatar: item.user.avatar },
             hours: item.hours,
             points: item.points,
             trend: item.trend
@@ -203,7 +203,7 @@ export const api = {
     },
 
     async getUser(userId: string) {
-        return request(`/users/me`); // Fallback for profile views
+        return request(`/users/${userId}`);
     },
 
     async isFollowing(targetUserId: string) {
@@ -257,12 +257,17 @@ export const api = {
         return request('/users/suggestions');
     },
 
-    async getFollowingUsers() {
-        return [];
+    async getFollowingUsers(userId?: string) {
+        if (!userId) {
+            userId = await this.getCurrentUserId();
+        }
+        if (!userId) return [];
+        return request(`/users/${userId}/following`);
     },
 
     async getFollowingCount(userId: string) {
-        return 0;
+        const data = await request(`/users/${userId}/following`);
+        return data?.length || 0;
     },
 
     async followUser(userId) {
@@ -292,17 +297,11 @@ export const api = {
     // Admin
     admin: {
         async getStats() {
-            const data = await request('/rankings');
-            return {
-                totalUsers: data.length,
-                onlineUsers: data.filter((u: any) => u.status === 'online').length,
-                totalPosts: 0,
-                totalGroups: 0
-            };
+            return request('/admin/stats');
         },
 
         async getAllUsers() {
-            return request('/rankings');
+            return request('/admin/users');
         },
 
         async getAllPosts() {
@@ -325,7 +324,7 @@ export const api = {
         },
 
         async getAllGroups() {
-            return request('/groups');
+            return request('/admin/groups');
         },
 
         async deleteGroup(groupId: string) {

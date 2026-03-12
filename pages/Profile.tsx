@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Award, Clock, Target, Zap, Trophy, Users, BookOpen, Star, UserPlus, Check, Share2, Search, UserCheck, User, RotateCcw } from 'lucide-react';
 import { formatStudyTime } from '../utils/formatTime';
-import { supabase } from '../services/supabaseClient';
 import {
     BarChart,
     Bar,
@@ -83,10 +82,10 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
     useEffect(() => {
         loadProfile();
         loadSuggestions();
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            if (user) setMyId(user.id);
-        });
-    }, [viewingUserId]);
+        if (currentUser) {
+            setMyId(currentUser.id);
+        }
+    }, [viewingUserId, currentUser]);
 
     const loadProfile = async () => {
         setIsLoading(true);
@@ -135,9 +134,10 @@ export const Profile: React.FC<ProfileProps> = ({ user: currentUser, viewingUser
 
     const loadSuggestions = async () => {
         try {
+            const profileId = viewingUserId || (await api.getCurrentUserId());
             const [suggestedData, followingData] = await Promise.all([
                 api.getSuggestedUsers(),
-                api.getFollowingUsers()
+                api.getFollowingUsers(profileId)
             ]);
             setSuggestions(suggestedData);
             setFollowingList(followingData);

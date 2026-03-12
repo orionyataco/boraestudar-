@@ -92,11 +92,11 @@ const App: React.FC = () => {
   const renderPage = () => {
     switch (currentPage) {
       case Page.DASHBOARD:
-        return <Dashboard onUpdateHours={handleUpdateHours} user={currentUser} onNavigateToProfile={handleNavigateToProfile} />;
+        return <Dashboard onUpdateHours={handleUpdateHours} user={currentUser} onNavigateToProfile={handleNavigateToProfile} onNavigate={(page, groupId) => handlePageChange(page as Page, { groupId })} />;
       case Page.PROFILE:
         return (
           <Profile
-            user={viewingUserId && viewingUserId !== currentUser?.id ? null : currentUser}
+            user={currentUser}
             viewingUserId={viewingUserId}
             onEditProfile={() => setCurrentPage(Page.EDIT_PROFILE)}
             onNavigateToProfile={handleNavigateToProfile}
@@ -117,11 +117,11 @@ const App: React.FC = () => {
           setViewingUserId(null);
         }} />;
       case Page.CHAT:
-        return <Chat onUpdateScore={handleUpdateScore} user={currentUser} initialGroupId={selectedGroupId ?? undefined} onBack={() => setCurrentPage(Page.GROUPS)} />;
+        return <Chat onUpdateScore={handleUpdateScore} user={currentUser} initialGroupId={selectedGroupId ?? undefined} onBack={() => setCurrentPage(Page.GROUPS)} onNavigateToProfile={handleNavigateToProfile} />;
       case Page.GROUPS:
         return <Groups onNavigate={(page, groupId) => handlePageChange(page as Page, { groupId })} />;
       case Page.RANKING:
-        return <Rankings users={rankingUsers} onNavigateToProfile={handleNavigateToProfile} />;
+        return <Rankings users={rankingUsers} onNavigateToProfile={handleNavigateToProfile} currentUserId={currentUser?.id} />;
       case Page.SETTINGS:
         return <Settings onNavigate={(page) => handlePageChange(page as Page)} />;
       case Page.ACCOUNT_SETTINGS:
@@ -129,7 +129,7 @@ const App: React.FC = () => {
       case Page.ADMIN:
         return <AdminDashboard currentUser={currentUser} />;
       default:
-        return <Dashboard onUpdateHours={handleUpdateHours} user={currentUser} onNavigateToProfile={handleNavigateToProfile} />;
+        return <Dashboard onUpdateHours={handleUpdateHours} user={currentUser} onNavigateToProfile={handleNavigateToProfile} onNavigate={(page, groupId) => handlePageChange(page as Page, { groupId })} />;
     }
   };
 

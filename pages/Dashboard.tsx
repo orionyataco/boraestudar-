@@ -7,10 +7,11 @@ import { api } from '../services/api';
 interface DashboardProps {
   onUpdateHours?: (hours: number) => void;
   user?: any;
-  onNavigate?: (page: string) => void;
+  onNavigate?: (page: string, groupId?: string) => void;
+  onNavigateToProfile?: (userId: string) => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ onUpdateHours, user, onNavigate }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ onUpdateHours, user, onNavigate, onNavigateToProfile }) => {
   // Post State
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -500,9 +501,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ onUpdateHours, user, onNav
             {/* ... EXISTING POST CONTENT ... */}
             <div className="flex justify-between items-start mb-4 relative">
               <div className="flex gap-3">
-                <img src={post.user?.avatar && !post.user.avatar.startsWith('blob:') ? post.user.avatar : "https://picsum.photos/id/64/100/100"} alt={post.user?.name} className="w-10 h-10 rounded-full object-cover border border-slate-700" />
+                <img 
+                  src={post.user?.avatar && !post.user.avatar.startsWith('blob:') ? post.user.avatar : "https://picsum.photos/id/64/100/100"} 
+                  alt={post.user?.name} 
+                  className="w-10 h-10 rounded-full object-cover border border-slate-700 cursor-pointer hover:opacity-80 transition-opacity" 
+                  onClick={() => onNavigateToProfile?.(post.user?.id)}
+                />
                 <div>
-                  <h3 className="font-semibold text-white">{post.user?.name}</h3>
+                  <h3 
+                    className="font-semibold text-white cursor-pointer hover:text-blue-400 transition-colors"
+                    onClick={() => onNavigateToProfile?.(post.user?.id)}
+                  >
+                    {post.user?.name}
+                  </h3>
                   <p className="text-xs text-slate-500">{post.timeAgo}</p>
                 </div>
               </div>
@@ -619,8 +630,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ onUpdateHours, user, onNav
                   <div key={comment.id} className="bg-slate-950/50 p-3 rounded-lg group border border-slate-800/50">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-2 mb-1">
-                        <img src={comment.user?.avatar && !comment.user.avatar.startsWith('blob:') ? comment.user.avatar : "https://picsum.photos/id/64/100/100"} className="w-5 h-5 rounded-full object-cover" alt={comment.user?.name} />
-                        <span className="text-xs font-bold text-slate-300">{comment.user?.name}</span>
+                        <img 
+                          src={comment.user?.avatar && !comment.user.avatar.startsWith('blob:') ? comment.user.avatar : "https://picsum.photos/id/64/100/100"} 
+                          className="w-5 h-5 rounded-full object-cover cursor-pointer hover:opacity-80 transition-opacity" 
+                          alt={comment.user?.name} 
+                          onClick={() => onNavigateToProfile?.(comment.user?.id)}
+                        />
+                        <span 
+                          className="text-xs font-bold text-slate-300 cursor-pointer hover:text-blue-400 transition-colors"
+                          onClick={() => onNavigateToProfile?.(comment.user?.id)}
+                        >
+                          {comment.user?.name}
+                        </span>
                         <span className="text-[10px] text-slate-500">• {comment.timestamp}</span>
                       </div>
 
@@ -743,7 +764,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onUpdateHours, user, onNav
                     </div>
                   </div>
                   <button
-                    onClick={() => onNavigate && onNavigate('GROUPS')}
+                    onClick={() => onNavigate && onNavigate('CHAT', group.id)}
                     className="text-xs font-semibold text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-3 py-1 rounded-lg transition-all"
                   >
                     Ver

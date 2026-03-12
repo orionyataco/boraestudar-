@@ -6,9 +6,10 @@ import { formatStudyTime } from '../utils/formatTime';
 interface RankingsProps {
   users: RankingUser[];
   onNavigateToProfile?: (userId: string) => void;
+  currentUserId?: string;
 }
 
-export const Rankings: React.FC<RankingsProps> = ({ users, onNavigateToProfile }) => {
+export const Rankings: React.FC<RankingsProps> = ({ users, onNavigateToProfile, currentUserId }) => {
   const [activeTab, setActiveTab] = useState<'points' | 'hours'>('points');
 
   // Sort users based on active tab
@@ -25,7 +26,7 @@ export const Rankings: React.FC<RankingsProps> = ({ users, onNavigateToProfile }
   });
 
   // Find current user stats in the sorted list
-  const currentUserIndex = sortedUsers.findIndex(u => u.user.id === 'me');
+  const currentUserIndex = sortedUsers.findIndex(u => u.user.id === currentUserId);
   const currentUser = sortedUsers[currentUserIndex];
   // The rank displayed depends on the sort order
   const currentRank = currentUserIndex + 1;
@@ -114,7 +115,7 @@ export const Rankings: React.FC<RankingsProps> = ({ users, onNavigateToProfile }
               <div
                 key={user.user.id}
                 className="grid grid-cols-12 gap-4 p-3 md:p-4 items-center hover:bg-slate-700/50 transition-colors cursor-pointer"
-                onClick={() => onNavigateToProfile?.(user.user.id === 'me' ? 'me' : user.user.id)}
+                onClick={() => onNavigateToProfile?.(user.user.id === currentUserId ? currentUserId : user.user.id)}
               >
                 <div className="col-span-1 flex justify-center items-center">
                   {getRankIcon(rank)}
@@ -123,7 +124,7 @@ export const Rankings: React.FC<RankingsProps> = ({ users, onNavigateToProfile }
                   <img src={user.user.avatar && !user.user.avatar.startsWith('blob:') ? user.user.avatar : "https://picsum.photos/id/64/100/100"} alt={user.user.name} className="w-10 h-10 rounded-full object-cover" />
                   <div>
                     <span className="font-semibold text-white block">{user.user.name}</span>
-                    {user.user.id === 'me' && <span className="text-xs text-blue-400">Você</span>}
+                    {user.user.id === currentUserId && <span className="text-xs text-blue-400">Você</span>}
                   </div>
                 </div>
                 <div className="col-span-4 text-right flex flex-col items-end justify-center">

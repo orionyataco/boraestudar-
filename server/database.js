@@ -6,6 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = path.join(__dirname, 'database.sqlite');
 
 const db = new Database(dbPath);
+db.pragma('foreign_keys = ON');
 
 // Create Users Table
 db.exec(`
@@ -36,7 +37,7 @@ db.exec(`
     questions_count INTEGER DEFAULT 0,
     accuracy REAL DEFAULT 0,
     trend TEXT DEFAULT 'neutral',
-    FOREIGN KEY (user_id) REFERENCES users (id)
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
   )
 `);
 
@@ -62,7 +63,7 @@ db.exec(`
     image TEXT,
     creator_id TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (creator_id) REFERENCES users (id)
+    FOREIGN KEY (creator_id) REFERENCES users (id) ON DELETE CASCADE
   )
 `);
 
